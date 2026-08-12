@@ -1,0 +1,139 @@
+# ==========================================================
+# School ERP monorepo
+#   school-erp-frontend/  Angular 18
+#   SchoolErp.Api/        .NET solution
+#   database/             SQL schema + seed scripts
+# ==========================================================
+
+# ----------------------------
+# .NET / Visual Studio
+# ----------------------------
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+bld/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio / Rider / VS Code local state
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.rsuser
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Publish / packaging output
+publish/
+[Pp]ublish[Pp]rofiles/*.pubxml.user
+*.pubxml.user
+*.azurePubxml
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# Test / coverage results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# MSBuild / misc
+*.tlog
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.svclog
+*.scc
+
+# ----------------------------
+# Angular / Node
+# ----------------------------
+node_modules/
+dist/
+tmp/
+out-tsc/
+bazel-out/
+.angular/
+.sass-cache/
+connect.lock
+libpeerconnection.log
+testem.log
+typings/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.eslintcache
+
+# ----------------------------
+# Secrets / local config
+# ----------------------------
+.env
+.env.*
+!.env.example
+*.local.json
+appsettings.*.Local.json
+secrets.json
+*.pfx
+*.p12
+*.key
+
+# ----------------------------
+# Database dumps & backups
+# (schema + seed scripts under database/ ARE tracked)
+# ----------------------------
+*.bak
+*.mdf
+*.ldf
+*.ndf
+*.dump
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ----------------------------
+# OS files
+# ----------------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*~
