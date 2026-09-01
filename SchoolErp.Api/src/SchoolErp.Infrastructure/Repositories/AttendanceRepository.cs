@@ -44,6 +44,29 @@ public class AttendanceRepository : IAttendanceRepository
                 ("@d", date.Date), ("@status", status));
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<(DateTime Date, int Present, int Total)>> GetDailyRatesAsync(
+        long schoolId, int days, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        // Inner query takes the newest marked days; the outer one flips them back to chronological
+        // order so the chart reads left-to-right.
+        const string sql = @"
+            SELECT * FROM (
+              SELECT attendance_date,
+                     SUM(status IN ('present','late')) AS present_count,
+                     COUNT(*) AS total_count
+              FROM daily_attendance
+              WHERE school_id=@sid
+              GROUP BY attendance_date
+              ORDER BY attendance_date DESC
+              LIMIT @take
+            ) t ORDER BY attendance_date";
+        return await DbHelper.QueryAsync(conn, sql,
+            r => (r.GetDate("attendance_date"), r.GetInt("present_count"), r.GetInt("total_count")),
+            ct, ("@sid", schoolId), ("@take", days));
+    }
+
     public async Task<IReadOnlyList<DailyAttendance>> GetStudentRangeAsync(long schoolId, long studentId, DateTime from, DateTime to, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);

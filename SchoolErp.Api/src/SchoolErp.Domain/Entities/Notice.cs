@@ -13,4 +13,7 @@ public class Notice
     public bool IsPublished { get; set; } = true;
     public long CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>Joined from `users` for display — not a column.</summary>
+    public string? CreatedByName { get; set; }
 }

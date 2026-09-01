@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.DTOs.Tickets;
 using SchoolErp.Application.Interfaces.Services;
@@ -6,6 +7,7 @@ namespace SchoolErp.Api.Controllers;
 
 [ApiController]
 [Route("api/super-admin/tickets")]
+[Authorize(Roles = "super_admin")]
 public class TicketsController : ControllerBase
 {
     private readonly ITicketService _service;

@@ -41,14 +41,60 @@ export interface SchoolDetail {
   status: string;
   onboardedAt: string | null;
   createdAt: string;
+  /** Current subscription; null across the board for schools onboarded before plans were required. */
+  planId: number | null;
+  planName: string | null;
+  billingCycle: string | null;
+  subscriptionStatus: string | null;
+  subscriptionEndsOn: string | null;
+  adminUsername: string | null;
+  adminEmail: string | null;
+  countryId: number | null;
+  stateId: number | null;
+  cityId: number | null;
+  /** Non-null only when a demo password is configured server-side; real ones are unreadable. */
+  adminPassword: string | null;
 }
 
 export interface CreateSchool {
   name: string; email: string; phone: string;
   city?: string | null; state?: string | null; country?: string | null;
   postalCode?: string | null; affiliationBoard?: string | null; status: string;
+  /** Required on create: a school with no subscription never appears under Subscriptions. */
+  planId: number; billingCycle: string;
+  /** Geography master ids; null when the typed name matched nothing. */
+  countryId?: number | null; stateId?: number | null; cityId?: number | null;
 }
+/** Same shape on update; planId 0 leaves the existing subscription untouched. */
 export type UpdateSchool = CreateSchool;
+
+/**
+ * Returned once when a school is onboarded. `temporaryPassword` is plaintext and is never
+ * retrievable again — only its bcrypt hash is stored — so it must be shown to the super admin
+ * straight away and never written to logs or local storage.
+ */
+/** Credentials handed back by a password reset — the plaintext exists only in this response. */
+export interface AdminCredentials {
+  userId: number;
+  fullName: string;
+  username: string;
+  email: string | null;
+  temporaryPassword: string;
+}
+
+export interface CreateSchoolResult {
+  schoolId: number;
+  schoolName: string;
+  schoolCode: string;
+  subdomain: string;
+  adminFullName: string;
+  username: string;
+  email: string;
+  temporaryPassword: string;
+  planName: string;
+  subscriptionStatus: string;
+  subscriptionEndsOn: string;
+}
 
 export interface Plan {
   id: number;
@@ -101,9 +147,23 @@ export interface BillingSummary {
   paidCount: number; sentCount: number; overdueCount: number;
 }
 export interface RecordPayment {
-  amount: number; method: string; transactionRef?: string | null;
+  amount: number; method: string;
+  /** Required by the API when method is bank_transfer. */
+  bankName?: string | null;
+  transactionRef?: string | null;
+  /** Path returned by uploadPaymentProof(). */
+  proofUrl?: string | null;
   paidAt: string; remarks?: string | null;
 }
+
+/** Payment methods offered when recording a payment, in display order. */
+export const PAYMENT_METHODS = [
+  { value: 'bank_transfer', label: 'Bank transfer' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'debit_card', label: 'Debit card' },
+  { value: 'credit_card', label: 'Credit card' },
+  { value: 'cash', label: 'Cash' },
+];
 
 export interface TicketListItem {
   id: number;
@@ -160,11 +220,15 @@ export class SuperAdminApiService {
   getSchool(id: number): Observable<SchoolDetail> {
     return this.http.get<SchoolDetail>(`${this.base}/schools/${id}`);
   }
-  createSchool(dto: CreateSchool): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>(`${this.base}/schools`, dto);
+  createSchool(dto: CreateSchool): Observable<CreateSchoolResult> {
+    return this.http.post<CreateSchoolResult>(`${this.base}/schools`, dto);
   }
   updateSchool(id: number, dto: UpdateSchool): Observable<void> {
     return this.http.put<void>(`${this.base}/schools/${id}`, dto);
+  }
+  /** Issues a new admin password and returns it once — the old one is unrecoverable. */
+  resetSchoolAdminPassword(id: number): Observable<AdminCredentials> {
+    return this.http.post<AdminCredentials>(`${this.base}/schools/${id}/admin/reset-password`, {});
   }
   setSchoolStatus(id: number, status: string): Observable<void> {
     return this.http.patch<void>(`${this.base}/schools/${id}/status`, { status });
@@ -200,6 +264,16 @@ export class SuperAdminApiService {
   }
   getBillingSummary(): Observable<BillingSummary> {
     return this.http.get<BillingSummary>(`${this.base}/billing/summary`);
+  }
+  /** Raises an invoice against a school's current subscription. */
+  raiseInvoice(dto: { schoolId: number; amount?: number | null; dueDate?: string | null }): Observable<Invoice> {
+    return this.http.post<Invoice>(`${this.base}/billing/invoices`, dto);
+  }
+  /** Uploads a payment screenshot and returns the stored path to attach to the payment. */
+  uploadPaymentProof(file: File): Observable<{ url: string; fileName: string }> {
+    const body = new FormData();
+    body.append('file', file);
+    return this.http.post<{ url: string; fileName: string }>(`${this.base}/billing/payment-proof`, body);
   }
   recordPayment(invoiceId: number, dto: RecordPayment): Observable<void> {
     return this.http.post<void>(`${this.base}/billing/invoices/${invoiceId}/payments`, dto);

@@ -1,4 +1,12 @@
+using SchoolErp.Application.DTOs.Auth;
+
 namespace SchoolErp.Application.DTOs.Admin;
+
+/// <summary>
+/// Result of admitting a student: the student row plus the login that was created for them.
+/// The password inside <paramref name="Credentials"/> is shown once and never retrievable again.
+/// </summary>
+public record CreateStudentResultDto(long Id, string AdmissionNo, string? RollNo, GeneratedCredentialsDto Credentials);
 
 public record StudentListItemDto(
     long Id, string AdmissionNo, string Name, string? ClassName, string? SectionName,
@@ -10,7 +18,8 @@ public record StudentDetailDto(
     string? ClassName, string? SectionName, string? RollNo, string? Gender, DateTime? Dob,
     string? BloodGroup, string? Email, string? Phone, string? GuardianName, string? GuardianPhone,
     string? Address, string? City, string? State, string? Pincode, string? PreviousSchool,
-    DateTime? AdmissionDate, decimal FeeDue, string Status);
+    DateTime? AdmissionDate, decimal FeeDue, string Status,
+    long? StateId, long? CityId);
 
 public class SaveStudentDto
 {
@@ -30,4 +39,11 @@ public class SaveStudentDto
     public string? State { get; set; }
     public string? Pincode { get; set; }
     public string? PreviousSchool { get; set; }
+
+    /// <summary>
+    /// Geography master ids. Authoritative — the city/state text is written from
+    /// whatever they resolve to. The country follows the school, so it is not sent.
+    /// </summary>
+    public long? StateId { get; set; }
+    public long? CityId { get; set; }
 }

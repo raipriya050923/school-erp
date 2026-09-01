@@ -11,12 +11,19 @@ public class AuthService : IAuthService
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _hasher;
     private readonly INotificationSender _notifier;
+    private readonly ITokenService _tokens;
+    private readonly ISchoolRepository _schools;
+    private readonly ISubscriptionRepository _subscriptions;
 
-    public AuthService(IUserRepository users, IPasswordHasher hasher, INotificationSender notifier)
+    public AuthService(IUserRepository users, IPasswordHasher hasher, INotificationSender notifier,
+        ITokenService tokens, ISchoolRepository schools, ISubscriptionRepository subscriptions)
     {
         _users = users;
         _hasher = hasher;
         _notifier = notifier;
+        _tokens = tokens;
+        _schools = schools;
+        _subscriptions = subscriptions;
     }
 
     public async Task<AuthUserDto> LoginAsync(LoginDto dto, CancellationToken ct = default)
@@ -29,8 +36,21 @@ public class AuthService : IAuthService
             throw new ValidationException("Invalid username or password.");
         if (!user.IsActive)
             throw new ValidationException("This account is disabled. Contact your administrator.");
+        if (user.UserType != "super_admin" && user.SchoolId is null)
+            throw new ValidationException("This account is not linked to a school. Contact your administrator.");
+        // Platform staff must stay able to sign in and fix a lapsed tenant, so they skip this.
+        if (user.UserType != "super_admin" && user.SchoolId is { } tenantId)
+            await EnsureTenantIsUsableAsync(tenantId, ct);
 
-        return ToAuthUser(user);
+        // The portals key off staff/student rows rather than the login itself, so resolve those
+        // once here and carry them in the token instead of looking them up on every request.
+        var staffId = user.UserType is "teacher" or "staff" ? await _users.GetStaffIdAsync(user.Id, ct) : null;
+        var studentId = user.UserType == "student" ? await _users.GetStudentIdAsync(user.Id, ct) : null;
+
+        var (token, expiresAt) = _tokens.Issue(
+            new TokenIdentity(user.Id, user.SchoolId, user.UserType, user.Username, staffId, studentId));
+
+        return ToAuthUser(user, token, expiresAt);
     }
 
     public async Task ChangePasswordAsync(ChangePasswordDto dto, CancellationToken ct = default)
@@ -74,16 +94,39 @@ public class AuthService : IAuthService
         await _users.MarkResetTokenUsedAsync(dto.Token.Trim(), ct);
     }
 
+    /// <summary>
+    /// Refuses sign-in for a tenant that has been shut off. Judged on the stored statuses only,
+    /// never on <c>end_date</c>: nothing advances a lapsed subscription to 'expired' yet, so
+    /// dating the check would lock out every school whose seeded period has simply run out.
+    /// </summary>
+    private async Task EnsureTenantIsUsableAsync(long schoolId, CancellationToken ct)
+    {
+        var school = await _schools.GetByIdAsync(schoolId, ct);
+        if (school is null)
+            throw new ValidationException("This school no longer exists. Contact support.");
+        if (school.Status is "suspended")
+            throw new ValidationException("This school is suspended. Contact your platform administrator.");
+        if (school.Status is "terminated")
+            throw new ValidationException("This school's account has been closed. Contact your platform administrator.");
+
+        // A school that never had a subscription is left alone — blocking it would strand tenants
+        // onboarded before plans were required.
+        var sub = await _subscriptions.GetLatestBySchoolAsync(schoolId, ct);
+        if (sub?.Status is "expired" or "cancelled")
+            throw new ValidationException("This school's subscription has ended. Contact your platform administrator.");
+    }
+
     private static void ValidateNewPassword(string pw)
     {
         if (string.IsNullOrWhiteSpace(pw) || pw.Length < 6)
             throw new ValidationException("New password must be at least 6 characters.");
     }
 
-    private static AuthUserDto ToAuthUser(User u)
+    private static AuthUserDto ToAuthUser(User u, string token, DateTime expiresAt)
     {
         var (role, portal, title) = MapRole(u);
-        return new AuthUserDto(u.Id, u.SchoolId, u.UserType, role, u.Username, u.Email, u.FullName, portal, title);
+        return new AuthUserDto(u.Id, u.SchoolId, u.UserType, role, u.Username, u.Email, u.FullName,
+            portal, title, token, expiresAt);
     }
 
     private static (string role, string portal, string title) MapRole(User u) => u.UserType switch

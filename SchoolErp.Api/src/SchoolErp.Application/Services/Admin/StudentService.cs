@@ -11,11 +11,31 @@ public class StudentService : IStudentService
     private static readonly string[] Statuses = { "active", "inactive", "transferred", "graduated", "dropped" };
     private readonly IStudentRepository _repo;
     private readonly ICurrentSchool _school;
+    private readonly IAccountProvisioner _accounts;
+    private readonly IGeographyService _geography;
+    private readonly INotificationCenter _bell;
 
-    public StudentService(IStudentRepository repo, ICurrentSchool school)
+    public StudentService(IStudentRepository repo, ICurrentSchool school, IAccountProvisioner accounts,
+        INotificationCenter bell, IGeographyService geography)
     {
         _repo = repo;
         _school = school;
+        _accounts = accounts;
+        _bell = bell;
+        _geography = geography;
+    }
+
+    /// <summary>
+    /// Resolves the state/city ids against the master and mirrors the names into the
+    /// text columns, so the two representations cannot drift apart.
+    /// </summary>
+    private async Task ApplyPlaceAsync(Student s, SaveStudentDto dto, CancellationToken ct)
+    {
+        var place = await _geography.ResolveAsync(null, dto.StateId, dto.CityId, ct);
+        s.StateId = place.StateId;
+        s.CityId = place.CityId;
+        s.State = place.StateName ?? dto.State;
+        s.City = place.CityName ?? dto.City;
     }
 
     public async Task<IReadOnlyList<StudentListItemDto>> ListAsync(string? search, string? className, CancellationToken ct = default)
@@ -33,18 +53,39 @@ public class StudentService : IStudentService
         return new StudentDetailDto(s.Id, s.AdmissionNo, $"{s.FirstName} {s.LastName}".Trim(),
             s.FirstName, s.LastName, s.ClassName, s.SectionName, s.RollNo, s.Gender, s.Dob,
             s.BloodGroup, s.Email, s.Phone, s.GuardianName, s.GuardianPhone, s.Address, s.City,
-            s.State, s.Pincode, s.PreviousSchool, s.AdmissionDate, s.FeeDue, s.Status);
+            s.State, s.Pincode, s.PreviousSchool, s.AdmissionDate, s.FeeDue, s.Status,
+            s.StateId, s.CityId);
     }
 
-    public async Task<long> CreateAsync(SaveStudentDto dto, CancellationToken ct = default)
+    public async Task<CreateStudentResultDto> CreateAsync(SaveStudentDto dto, CancellationToken ct = default)
     {
         Validate(dto);
         var s = Map(new Student { SchoolId = _school.SchoolId }, dto);
+        await ApplyPlaceAsync(s, dto, ct);
         s.AdmissionNo = await _repo.NextAdmissionNoAsync(_school.SchoolId, ct);
+        // Roll numbers run per class/section; the client only previews one, the server decides it.
+        if (string.IsNullOrWhiteSpace(s.RollNo))
+            s.RollNo = await _repo.NextRollNoAsync(_school.SchoolId, s.ClassName, s.SectionName, ct);
         s.AdmissionDate = DateTime.UtcNow;
         s.Status = "active";
-        return await _repo.CreateAsync(s, ct);
+        var id = await _repo.CreateAsync(s, ct);
+
+        var fullName = $"{s.FirstName} {s.LastName}".Trim();
+        var credentials = await _accounts.ProvisionAsync(
+            _school.SchoolId, "student", CredentialGenerator.UsernameStem(s.FirstName, s.LastName),
+            fullName, s.Email, s.Phone, ct);
+        // The student portal resolves student_id from students.user_id at login.
+        await _repo.SetUserIdAsync(_school.SchoolId, id, credentials.UserId, ct);
+
+        await _bell.NotifyRoleAsync(_school.SchoolId, "school_admin",
+            "New admission", $"{fullName} joined {s.ClassName}-{s.SectionName} (roll {s.RollNo}).",
+            "admission", "students", id, ct);
+
+        return new CreateStudentResultDto(id, s.AdmissionNo, s.RollNo, credentials);
     }
+
+    public Task<string> NextRollNoAsync(string? className, string? sectionName, CancellationToken ct = default)
+        => _repo.NextRollNoAsync(_school.SchoolId, className, sectionName, ct);
 
     public async Task UpdateAsync(long id, SaveStudentDto dto, CancellationToken ct = default)
     {
@@ -52,6 +93,7 @@ public class StudentService : IStudentService
         var s = await _repo.GetByIdAsync(_school.SchoolId, id, ct)
                 ?? throw new NotFoundException($"Student {id} not found.");
         Map(s, dto);
+        await ApplyPlaceAsync(s, dto, ct);
         await _repo.UpdateAsync(s, ct);
     }
 

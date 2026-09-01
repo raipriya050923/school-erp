@@ -6,6 +6,7 @@ public interface IBillingService
 {
     Task<IReadOnlyList<InvoiceDto>> ListInvoicesAsync(string? status, CancellationToken ct = default);
     Task<BillingSummaryDto> GetSummaryAsync(CancellationToken ct = default);
+    Task<InvoiceDto> RaiseInvoiceAsync(RaiseInvoiceDto dto, CancellationToken ct = default);
     Task RecordPaymentAsync(long invoiceId, RecordPaymentDto dto, CancellationToken ct = default);
     Task SendReminderAsync(long invoiceId, CancellationToken ct = default);
 }

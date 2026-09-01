@@ -63,6 +63,20 @@ public class TimetableSlot
     public string? Subject { get; set; }
     public string? Room { get; set; }
     public long? TeacherStaffId { get; set; }
+
+    public string? TeacherName { get; set; }
+}
+
+/// <summary>A period column of the timetable grid. Maps to `timetable_periods`.</summary>
+public class TimetablePeriod
+{
+    public long Id { get; set; }
+    public long SchoolId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public TimeSpan StartTime { get; set; }
+    public TimeSpan EndTime { get; set; }
+    public bool IsBreak { get; set; }
+    public int SortOrder { get; set; }
 }
 
 public class FeeInvoiceRow
@@ -78,4 +92,18 @@ public class FeeInvoiceRow
     public decimal Paid { get; set; }
     public DateTime? DueDate { get; set; }
     public string Status { get; set; } = "unpaid";
+}
+
+/// <summary>
+/// How far marks entry has got for one paper of an exam, in one section. Papers are the unit a
+/// teacher actually works through, so this is what the Marks Entry screen counts down.
+/// </summary>
+public class MarksProgressRow
+{
+    public string Subject { get; set; } = string.Empty;
+    public int FullMarks { get; set; }
+    public DateTime? ExamDate { get; set; }
+    /// <summary>Students in the section with a mark recorded for this paper.</summary>
+    public int Entered { get; set; }
+    public int Total { get; set; }
 }

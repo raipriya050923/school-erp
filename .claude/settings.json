@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(dotnet build SchoolErp.Api/SchoolErp.Api.sln -v q --nologo)",
+      "PowerShell(dotnet build SchoolErp.Api/SchoolErp.SuperAdmin.sln -v q --nologo)",
+      "PowerShell(npx --prefix school-erp-frontend tsc --noEmit -p school-erp-frontend/tsconfig.app.json)",
+      "PowerShell(dotnet add SchoolErp.Api/src/SchoolErp.Infrastructure/SchoolErp.Infrastructure.csproj package System.IdentityModel.Tokens.Jwt --version 8.0.2 2>&1)",
+      "PowerShell(Set-Location d:\\\\projects\\\\school-erp; Get-Process -Name SchoolErp.Api -ErrorAction SilentlyContinue | Select-Object Id, ProcessName; Write-Output \"---port---\"; \\(Test-NetConnection -ComputerName localhost -Port 5204 -WarningAction SilentlyContinue\\).TcpTestSucceeded)",
+      "Bash(curl -s -o /dev/null http://localhost:5204/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5204/api/admin/dashboard/stats)",
+      "Bash(curl -s -X POST http://localhost:5204/api/auth/login -H \"Content-Type: application/json\" -d '{\"username\":\"anita\",\"password\":\"Password@123\"}' -o /tmp/anita.json -w \"http %{http_code}\\\\n\")",
+      "Bash(python -c ' *)",
+      "Read(//c/Users/pc/AppData/Local/Temp/claude/d--projects-school-erp/01fd07fe-9724-4b9a-b1f7-2f7b70221edc/scratchpad/**)",
+      "Bash(curl -s -m 5 -X POST http://localhost:5204/api/auth/login -H \"Content-Type: application/json\" -d '{\"username\":\"anita\",\"password\":\"Password@123\"}' -o a.json -w \"login http %{http_code}\\\\n\")",
+      "Bash(python -c \"import json;d=json.load\\(open\\('a.json'\\)\\);print\\('token?',bool\\(d.get\\('token'\\)\\)\\)\")",
+      "Bash(curl -s -m 2 -o /dev/null http://localhost:5205/)",
+      "PowerShell(Write-Output \"Port 5205 \\(mine\\): $\\([bool]\\(Get-NetTCPConnection -LocalPort 5205 -State Listen -ErrorAction SilentlyContinue\\)\\)\"; Write-Output \"Port 5204 \\(yours\\): $\\([bool]\\(Get-NetTCPConnection -LocalPort 5204 -State Listen -ErrorAction SilentlyContinue\\)\\)\")",
+      "Bash(curl -s -m 10 -X POST http://localhost:5205/api/auth/login -H \"Content-Type: application/json\" -d '{\"username\":\"anita\",\"password\":\"Password@123\"}' -o c.json -w \"admin login %{http_code}\\\\n\")",
+      "Bash(python -c \"import json;print\\(json.load\\(open\\('c.json'\\)\\)['token']\\)\")",
+      "Bash(curl -s -X POST http://localhost:5205/api/admin/teachers -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"firstName\":\"Manisha\",\"lastName\":\"Regmi\",\"subject\":\"Science\",\"phone\":\"9800000999\",\"email\":\"manisha.regmi@sunrise.edu.np\"}' -o t.json)",
+      "Bash(python -m json.tool t.json)",
+      "Bash(curl -s -X POST http://localhost:5205/api/admin/students -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"firstName\":\"Sujan\",\"lastName\":\"Thapa\",\"className\":\"Grade 8\",\"sectionName\":\"A\",\"guardianName\":\"Ram Thapa\",\"guardianPhone\":\"9800111222\",\"email\":\"manisha.regmi@sunrise.edu.np\"}' -o s2.json)",
+      "Read(//c/Program Files/MySQL/**)",
+      "Read(//c/xampp/mysql/bin/**)",
+      "Bash(cd \"d:/projects/school-erp/SchoolErp.Api/src/SchoolErp.Api\" && sed -n '1,6p' appsettings.json; ls \"/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe\" 2>/dev/null)",
+      "Read(//c/Program Files/MySQL/MySQL Server 8.0/bin/**)"
+    ]
+  }
+}

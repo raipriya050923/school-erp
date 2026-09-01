@@ -9,6 +9,8 @@ import {
   SaBillingComponent,
   SaTicketsComponent,
 } from './super-admin.pages';
+import { ProfilePageComponent } from '../../shared/profile.page';
+import { SaGeographyComponent } from './geography.page';
 
 export const SUPER_ADMIN_ROUTES: Routes = [
   {
@@ -24,13 +26,16 @@ export const SUPER_ADMIN_ROUTES: Routes = [
         { label: 'School Subscriptions', path: 'subscriptions', icon: 'package' },
         { label: 'Billing & Payments', path: 'billing', icon: 'card' },
         { label: 'Support Tickets', path: 'tickets', icon: 'ticket' },
+        { label: 'Geography', path: 'geography', icon: 'layers' },
       ],
     },
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      { path: 'profile', component: ProfilePageComponent },
       { path: 'dashboard', component: SaDashboardComponent },
       { path: 'schools', component: SaSchoolsComponent },
       { path: 'plans', component: SaPlansComponent },
+      { path: 'geography', component: SaGeographyComponent },
       { path: 'subscriptions', component: SaSubscriptionsComponent },
       { path: 'billing', component: SaBillingComponent },
       { path: 'tickets', component: SaTicketsComponent },

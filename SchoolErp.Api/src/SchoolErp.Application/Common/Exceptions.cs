@@ -11,3 +11,12 @@ public class ValidationException : Exception
 {
     public ValidationException(string message) : base(message) { }
 }
+
+/// <summary>
+/// Thrown when the caller is authenticated but their token does not carry the scope the
+/// operation needs (e.g. an admin endpoint reached without a school id). Maps to HTTP 403.
+/// </summary>
+public class ForbiddenException : Exception
+{
+    public ForbiddenException(string message) : base(message) { }
+}

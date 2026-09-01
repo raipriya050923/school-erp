@@ -14,6 +14,20 @@ export interface AttendanceMonth { month: string; present: number; absent: numbe
 export interface AttendanceRecent { date: string; day: string; status: string; }
 export interface StudentAttendance { overallPercent: number; presentDays: number; totalDays: number; months: AttendanceMonth[]; recent: AttendanceRecent[]; }
 export interface StudentTimetableSlot { dayOfWeek: number; periodNo: number; time: string | null; subject: string | null; room: string | null; }
+export interface StudentTimetablePeriod { periodNo: number; name: string; timeLabel: string; isBreak: boolean; }
+/**
+ * Columns and rows travel with the slots. Period numbers count breaks, so a fixed 1..6 grid put
+ * a blank column where the break is, mislabelled everything after it, and dropped the last
+ * period of the day; working days vary by school.
+ */
+export interface StudentTimetable {
+  /** Whose timetable this is — an empty grid means nothing without it. */
+  className: string | null;
+  sectionName: string | null;
+  periods: StudentTimetablePeriod[];
+  workingDays: number[];
+  slots: StudentTimetableSlot[];
+}
 export interface StudentResult { subject: string; fullMarks: number; marks: number | null; grade: string; }
 export interface UpcomingPaper { date: string | null; subject: string; time: string | null; room: string | null; }
 export interface StudentExams { examName: string | null; total: number; fullTotal: number; percent: number; grade: string; results: StudentResult[]; upcoming: UpcomingPaper[]; }
@@ -27,7 +41,7 @@ export class StudentApiService {
 
   getDashboard(): Observable<StudentDashboard> { return this.http.get<StudentDashboard>(`${this.base}/dashboard/stats`); }
   getAttendance(): Observable<StudentAttendance> { return this.http.get<StudentAttendance>(`${this.base}/attendance`); }
-  getTimetable(): Observable<StudentTimetableSlot[]> { return this.http.get<StudentTimetableSlot[]>(`${this.base}/timetable`); }
+  getTimetable(): Observable<StudentTimetable> { return this.http.get<StudentTimetable>(`${this.base}/timetable`); }
   getHomework(): Observable<StudentHomework[]> { return this.http.get<StudentHomework[]>(`${this.base}/homework`); }
   getExams(): Observable<StudentExams> { return this.http.get<StudentExams>(`${this.base}/exams`); }
   getFees(): Observable<StudentFee[]> { return this.http.get<StudentFee[]>(`${this.base}/fees`); }

@@ -13,4 +13,7 @@ public interface IStudentRepository
     Task<decimal> TotalFeesDueAsync(long schoolId, CancellationToken ct = default);
     Task<IReadOnlyList<Student>> RecentAsync(long schoolId, int take, CancellationToken ct = default);
     Task<string> NextAdmissionNoAsync(long schoolId, CancellationToken ct = default);
+    Task<string> NextRollNoAsync(long schoolId, string? className, string? sectionName, CancellationToken ct = default);
+    /// <summary>Links the student row to its login account; the student portal resolves student_id from this.</summary>
+    Task SetUserIdAsync(long schoolId, long id, long userId, CancellationToken ct = default);
 }

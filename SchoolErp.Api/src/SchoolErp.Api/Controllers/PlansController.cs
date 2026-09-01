@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.DTOs.Plans;
 using SchoolErp.Application.Interfaces.Services;
@@ -6,6 +7,7 @@ namespace SchoolErp.Api.Controllers;
 
 [ApiController]
 [Route("api/super-admin/plans")]
+[Authorize(Roles = "super_admin")]
 public class PlansController : ControllerBase
 {
     private readonly IPlanService _service;

@@ -70,6 +70,8 @@ public class StudentPortalRepository : IStudentPortalRepository
     public async Task<Exam?> GetPublishedExamAsync(long schoolId, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        // Publishing results is an editorial decision, so this one really is the stored status —
+        // an exam simply being over does not mean its marks are ready to show.
         const string sql = @"SELECT id, name FROM exam WHERE school_id=@sid AND status='result_published'
                              ORDER BY end_date DESC LIMIT 1";
         return await DbHelper.QuerySingleAsync(conn, sql, r => new Exam { Id = r.GetLong("id"), Name = r.GetString("name") }, ct, ("@sid", schoolId));
@@ -91,9 +93,14 @@ public class StudentPortalRepository : IStudentPortalRepository
     public async Task<IReadOnlyList<ExamPaper>> GetUpcomingPapersAsync(long schoolId, string className, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        // Upcoming is a date question, not a stored-status one. This used to match
+        // status IN ('scheduled','ongoing'), but the column is 'auto' on almost every row,
+        // so it found papers only by accident.
         const string sql = @"SELECT p.subject, p.exam_date, p.time_label, p.room, p.class_label
                              FROM exam_paper p JOIN exam e ON e.id = p.exam_id
-                             WHERE e.school_id=@sid AND e.status IN ('scheduled','ongoing') AND p.class_label=@cls
+                             WHERE e.school_id=@sid AND e.status <> 'cancelled'
+                               AND (e.end_date IS NULL OR e.end_date >= CURDATE())
+                               AND p.class_label=@cls
                              ORDER BY p.exam_date";
         return await DbHelper.QueryAsync(conn, sql, r => new ExamPaper
         {

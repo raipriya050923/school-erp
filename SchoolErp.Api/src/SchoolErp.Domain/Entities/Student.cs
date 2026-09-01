@@ -23,6 +23,10 @@ public class Student
     public string? City { get; set; }
     public string? State { get; set; }
     public string? Pincode { get; set; }
+
+    // Geography master (platform-level). Country is not stored here — it follows the school.
+    public long? StateId { get; set; }
+    public long? CityId { get; set; }
     public string? PreviousSchool { get; set; }
     public DateTime? AdmissionDate { get; set; }
     public decimal FeeDue { get; set; }

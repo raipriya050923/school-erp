@@ -12,6 +12,9 @@ import {
   TMarksComponent,
   TTimetableComponent,
 } from './teacher-txn.pages';
+import { ProfilePageComponent } from '../../shared/profile.page';
+import { TcMyLeaveComponent } from './my-leave.page';
+import { TcClassResultsComponent } from './class-results.page';
 
 export const TEACHER_ROUTES: Routes = [
   {
@@ -24,19 +27,24 @@ export const TEACHER_ROUTES: Routes = [
         { label: 'Dashboard', path: 'dashboard', icon: 'grid' },
         { label: 'My Classes', path: 'classes', icon: 'presentation' },
         { label: 'Attendance', path: 'attendance', icon: 'clipboard' },
-        { label: 'Homework', path: 'homework', icon: 'book' },
+        // Homework is hidden from the sidebar; the route below still resolves if linked to.
         { label: 'Marks Entry', path: 'marks', icon: 'exam' },
+        { label: 'Class Results', path: 'results', icon: 'exam' },
         { label: 'My Timetable', path: 'timetable', icon: 'calendar' },
+        { label: 'My Leave', path: 'leave', icon: 'clipboard' },
       ],
     },
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      { path: 'profile', component: ProfilePageComponent },
       { path: 'dashboard', component: TDashboardComponent },
       { path: 'classes', component: TMyClassesComponent },
       { path: 'attendance', component: TAttendanceComponent },
       { path: 'homework', component: THomeworkComponent },
       { path: 'marks', component: TMarksComponent },
+      { path: 'results', component: TcClassResultsComponent },
       { path: 'timetable', component: TTimetableComponent },
+      { path: 'leave', component: TcMyLeaveComponent },
     ],
   },
 ];

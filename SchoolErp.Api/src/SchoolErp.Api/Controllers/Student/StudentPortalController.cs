@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.Interfaces.Services;
 
@@ -5,6 +6,7 @@ namespace SchoolErp.Api.Controllers.Student;
 
 [ApiController]
 [Route("api/student")]
+[Authorize(Roles = "student")]
 public class StudentPortalController : ControllerBase
 {
     private readonly IStudentPortalService _service;

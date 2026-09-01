@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.DTOs.Admin;
 using SchoolErp.Application.DTOs.Schools;
@@ -7,6 +8,7 @@ namespace SchoolErp.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/teachers")]
+[Authorize(Roles = "school_admin")]
 public class AdminTeachersController : ControllerBase
 {
     private readonly ITeacherService _service;
@@ -23,9 +25,14 @@ public class AdminTeachersController : ControllerBase
         return t is null ? NotFound() : Ok(t);
     }
 
+    /// <summary>
+    /// Registers a teacher and provisions their portal login. The response carries the generated
+    /// password in plaintext — it is never persisted or retrievable afterwards, so the caller
+    /// must surface it to the admin immediately.
+    /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] SaveTeacherDto dto, CancellationToken ct)
-        => Ok(new { id = await _service.CreateAsync(dto, ct) });
+        => Ok(await _service.CreateAsync(dto, ct));
 
     [HttpPut("{id:long}")]
     public async Task<IActionResult> Update(long id, [FromBody] SaveTeacherDto dto, CancellationToken ct)

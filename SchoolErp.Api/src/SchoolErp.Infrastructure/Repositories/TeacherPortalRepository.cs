@@ -16,7 +16,7 @@ public class TeacherPortalRepository : ITeacherPortalRepository
         const string sql = @"
             SELECT id, school_id, user_id, employee_code, staff_type, first_name, last_name, gender, dob,
                    email, phone, address, city, state, pincode, qualification, specialization,
-                   classes_taught, joining_date, status, created_at
+                   joining_date, status, created_at
             FROM staff WHERE id=@id AND school_id=@sid AND deleted_at IS NULL";
         return await DbHelper.QuerySingleAsync(conn, sql, MapStaff, ct, ("@id", staffId), ("@sid", schoolId));
     }
@@ -42,6 +42,68 @@ public class TeacherPortalRepository : ITeacherPortalRepository
             Room = r.GetStringOrNull("room_no"),
             StudentCount = r.GetInt("student_count"),
         }, ct, ("@sid", schoolId), ("@tid", staffId));
+    }
+
+    public async Task<IReadOnlyList<TeacherAssignmentRow>> GetMyAssignmentsAsync(long schoolId, long staffId, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        // Pinned to the current academic year: an assignment from a past year is history, not a
+        // licence to edit this year's marks.
+        const string sql = @"
+            SELECT sec.id AS section_id, sec.name AS section_name, c.name AS class_name,
+                   sub.id AS subject_id, sub.name AS subject,
+                   (SELECT COUNT(*) FROM students stu
+                     WHERE stu.school_id = sec.school_id AND stu.class_name = c.name
+                       AND stu.section_name = sec.name AND stu.deleted_at IS NULL) AS student_count
+            FROM teacher_assignments ta
+            JOIN sections sec ON sec.id = ta.section_id
+            JOIN classes c ON c.id = sec.class_id
+            JOIN subjects sub ON sub.id = ta.subject_id
+            JOIN academic_years ay ON ay.id = ta.academic_year_id AND ay.is_current = 1
+            WHERE ta.school_id = @sid AND ta.staff_id = @tid
+            ORDER BY c.numeric_level, c.name, sec.name, sub.name";
+        return await DbHelper.QueryAsync(conn, sql, r => new TeacherAssignmentRow
+        {
+            SectionId = r.GetLong("section_id"),
+            ClassName = r.GetString("class_name"),
+            SectionName = r.GetString("section_name"),
+            SubjectId = r.GetLong("subject_id"),
+            Subject = r.GetString("subject"),
+            StudentCount = r.GetInt("student_count"),
+        }, ct, ("@sid", schoolId), ("@tid", staffId));
+    }
+
+    public async Task<IReadOnlyList<SubjectTeacherRow>> GetSectionSubjectTeachersAsync(long schoolId, string className, string sectionName, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        const string sql = @"
+            SELECT sub.name AS subject,
+                   TRIM(CONCAT(COALESCE(s.first_name, ''), ' ', COALESCE(s.last_name, ''))) AS teacher_name
+            FROM teacher_assignments ta
+            JOIN sections sec ON sec.id = ta.section_id
+            JOIN classes c ON c.id = sec.class_id
+            JOIN subjects sub ON sub.id = ta.subject_id
+            JOIN academic_years ay ON ay.id = ta.academic_year_id AND ay.is_current = 1
+            LEFT JOIN staff s ON s.id = ta.staff_id
+            WHERE ta.school_id = @sid AND c.name = @cls AND sec.name = @sec
+            ORDER BY sub.name";
+        return await DbHelper.QueryAsync(conn, sql, r => new SubjectTeacherRow
+        {
+            Subject = r.GetString("subject"),
+            TeacherName = r.GetStringOrNull("teacher_name"),
+        }, ct, ("@sid", schoolId), ("@cls", className), ("@sec", sectionName));
+    }
+
+    public async Task<bool> IsClassTeacherOfAsync(long schoolId, long staffId, string className, string sectionName, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        return await DbHelper.ScalarLongAsync(conn, @"
+            SELECT COUNT(*)
+            FROM sections sec
+            JOIN classes c ON c.id = sec.class_id
+            WHERE sec.school_id = @sid AND sec.class_teacher_id = @tid
+              AND c.name = @cls AND sec.name = @sec", ct,
+            ("@sid", schoolId), ("@tid", staffId), ("@cls", className), ("@sec", sectionName)) > 0;
     }
 
     public async Task<IReadOnlyList<Student>> GetRosterAsync(long schoolId, string className, string sectionName, CancellationToken ct = default)
@@ -103,7 +165,6 @@ public class TeacherPortalRepository : ITeacherPortalRepository
         City = r.GetStringOrNull("city"),
         Qualification = r.GetStringOrNull("qualification"),
         Specialization = r.GetStringOrNull("specialization"),
-        ClassesTaught = r.GetStringOrNull("classes_taught"),
         JoiningDate = r.GetDateOrNull("joining_date"),
         Status = r.GetString("status"),
     };

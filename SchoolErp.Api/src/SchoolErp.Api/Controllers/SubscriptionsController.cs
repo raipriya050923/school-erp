@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.Interfaces.Services;
 
@@ -5,6 +6,7 @@ namespace SchoolErp.Api.Controllers;
 
 [ApiController]
 [Route("api/super-admin/subscriptions")]
+[Authorize(Roles = "super_admin")]
 public class SubscriptionsController : ControllerBase
 {
     private readonly ISubscriptionService _service;

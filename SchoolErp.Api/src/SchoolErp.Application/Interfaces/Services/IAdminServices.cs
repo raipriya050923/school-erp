@@ -11,16 +11,19 @@ public interface IStudentService
 {
     Task<IReadOnlyList<StudentListItemDto>> ListAsync(string? search, string? className, CancellationToken ct = default);
     Task<StudentDetailDto?> GetAsync(long id, CancellationToken ct = default);
-    Task<long> CreateAsync(SaveStudentDto dto, CancellationToken ct = default);
+    /// <summary>Admits the student and provisions their portal login, returning both.</summary>
+    Task<CreateStudentResultDto> CreateAsync(SaveStudentDto dto, CancellationToken ct = default);
     Task UpdateAsync(long id, SaveStudentDto dto, CancellationToken ct = default);
     Task SetStatusAsync(long id, string status, CancellationToken ct = default);
+    Task<string> NextRollNoAsync(string? className, string? sectionName, CancellationToken ct = default);
 }
 
 public interface ITeacherService
 {
     Task<IReadOnlyList<TeacherListItemDto>> ListAsync(string? search, CancellationToken ct = default);
     Task<TeacherDetailDto?> GetAsync(long id, CancellationToken ct = default);
-    Task<long> CreateAsync(SaveTeacherDto dto, CancellationToken ct = default);
+    /// <summary>Registers the teacher and provisions their portal login, returning both.</summary>
+    Task<CreateTeacherResultDto> CreateAsync(SaveTeacherDto dto, CancellationToken ct = default);
     Task UpdateAsync(long id, SaveTeacherDto dto, CancellationToken ct = default);
     Task SetStatusAsync(long id, string status, CancellationToken ct = default);
 }
@@ -40,4 +43,6 @@ public interface INoticeService
 {
     Task<IReadOnlyList<NoticeDto>> ListAsync(CancellationToken ct = default);
     Task<long> CreateAsync(CreateNoticeDto dto, CancellationToken ct = default);
+    Task UpdateAsync(long id, CreateNoticeDto dto, CancellationToken ct = default);
+    Task DeleteAsync(long id, CancellationToken ct = default);
 }

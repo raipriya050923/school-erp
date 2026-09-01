@@ -1,17 +1,19 @@
-using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Http;
+using SchoolErp.Application.Common;
 using SchoolErp.Application.Interfaces.Services;
 
 namespace SchoolErp.Infrastructure.Services;
 
-/// <summary>Reads the logged-in teacher's staff id from config (Teacher:CurrentStaffId).</summary>
+/// <summary>
+/// Resolves the signed-in teacher from token claims. <c>staff_id</c> is looked up from
+/// <c>staff.user_id</c> at login, so a teacher account with no staff row cannot reach the portal.
+/// </summary>
 public class CurrentTeacher : ICurrentTeacher
 {
-    public long StaffId { get; }
-    public long SchoolId { get; }
+    private readonly IHttpContextAccessor _accessor;
 
-    public CurrentTeacher(IConfiguration config)
-    {
-        StaffId = long.TryParse(config["Teacher:CurrentStaffId"], out var sid) ? sid : 1;
-        SchoolId = long.TryParse(config["School:CurrentSchoolId"], out var school) ? school : 1;
-    }
+    public CurrentTeacher(IHttpContextAccessor accessor) => _accessor = accessor;
+
+    public long StaffId => ClaimsAccessor.Require(_accessor, ErpClaims.StaffId, "staff record");
+    public long SchoolId => ClaimsAccessor.Require(_accessor, ErpClaims.SchoolId, "school id");
 }

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.DTOs.Transactional;
 using SchoolErp.Application.Interfaces.Services;
@@ -6,6 +7,7 @@ namespace SchoolErp.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/fees")]
+[Authorize(Roles = "school_admin")]
 public class AdminFeesController : ControllerBase
 {
     private readonly IAdminFeeService _service;
@@ -18,6 +20,10 @@ public class AdminFeesController : ControllerBase
     [HttpGet("summary")]
     public async Task<IActionResult> Summary(CancellationToken ct) => Ok(await _service.SummaryAsync(ct));
 
+    /// <summary>The head-by-head breakdown behind an invoice total.</summary>
+    [HttpGet("invoices/{id:long}/lines")]
+    public async Task<IActionResult> Lines(long id, CancellationToken ct) => Ok(await _service.LinesAsync(id, ct));
+
     [HttpPost("invoices/{id:long}/payments")]
     public async Task<IActionResult> RecordPayment(long id, [FromBody] RecordFeePaymentDto dto, CancellationToken ct)
     {
@@ -27,5 +33,5 @@ public class AdminFeesController : ControllerBase
 
     [HttpPost("generate")]
     public async Task<IActionResult> Generate([FromBody] GenerateInvoicesDto dto, CancellationToken ct)
-        => Ok(new { created = await _service.GenerateAsync(dto, ct) });
+        => Ok(await _service.GenerateAsync(dto, ct));
 }

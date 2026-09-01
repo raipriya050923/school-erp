@@ -11,11 +11,20 @@ public class School
     public string? LogoUrl { get; set; }
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    // Free-text address, kept in step with the ids below. The ids are authoritative;
+    // these remain because pre-master rows hold values that match no master entry.
     public string? City { get; set; }
     public string? State { get; set; }
     public string? Country { get; set; }
     public string? PostalCode { get; set; }
+
+    // Geography master (platform-level). Null on schools onboarded before it existed.
+    public long? CountryId { get; set; }
+    public long? StateId { get; set; }
+    public long? CityId { get; set; }
     public string Timezone { get; set; } = "Asia/Kathmandu";
+    /// <summary>Days the school runs, as day-of-week numbers (1 = Sunday … 7 = Saturday).</summary>
+    public string WorkingDays { get; set; } = "1,2,3,4,5,6";
     public string Currency { get; set; } = "NPR";
     public string? AffiliationBoard { get; set; }
     public string Status { get; set; } = "pending";   // pending | active | suspended | terminated

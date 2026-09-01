@@ -16,6 +16,20 @@ public record StudentAttendanceDto(
 
 public record StudentTimetableSlotDto(int DayOfWeek, int PeriodNo, string? Time, string? Subject, string? Room);
 
+/// <summary>
+/// A class timetable with the columns and rows it should be drawn on. Periods and working days
+/// come from the school, not from a fixed grid: period numbers count breaks, so a hardcoded
+/// 1..6 mislabels everything after the break and drops the last period of the day entirely.
+/// </summary>
+public record StudentTimetableDto(
+    /// <summary>Whose timetable this is — an empty grid means nothing without it.</summary>
+    string? ClassName, string? SectionName,
+    IReadOnlyList<StudentTimetablePeriodDto> Periods,
+    IReadOnlyList<int> WorkingDays,
+    IReadOnlyList<StudentTimetableSlotDto> Slots);
+
+public record StudentTimetablePeriodDto(int PeriodNo, string Name, string TimeLabel, bool IsBreak);
+
 public record StudentHomeworkDto(string Title, string? Subject, DateTime? DueDate, string Status);
 
 public record StudentResultDto(string Subject, decimal FullMarks, decimal? Marks, string Grade);

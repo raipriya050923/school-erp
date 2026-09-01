@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.DTOs.Transactional;
 using SchoolErp.Application.Interfaces.Services;
@@ -6,6 +7,7 @@ namespace SchoolErp.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/attendance")]
+[Authorize(Roles = "school_admin")]
 public class AdminAttendanceController : ControllerBase
 {
     private readonly IAdminAttendanceService _service;

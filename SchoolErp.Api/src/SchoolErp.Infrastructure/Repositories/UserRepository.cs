@@ -34,6 +34,60 @@ public class UserRepository : IUserRepository
             ("@h", passwordHash), ("@id", userId));
     }
 
+    public async Task<bool> UsernameExistsAsync(string username, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        return await DbHelper.ScalarLongAsync(conn,
+            "SELECT COUNT(*) FROM users WHERE username=@u AND deleted_at IS NULL", ct,
+            ("@u", username)) > 0;
+    }
+
+    public async Task<long> CreateAsync(User user, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        const string sql = @"
+            INSERT INTO users
+              (school_id, user_type, username, email, phone, password_hash, full_name, is_active, created_at, updated_at)
+            VALUES
+              (@school, @type, @username, @email, @phone, @hash, @name, @active, NOW(), NOW());";
+        return await DbHelper.InsertAsync(conn, sql, ct,
+            ("@school", user.SchoolId), ("@type", user.UserType), ("@username", user.Username),
+            ("@email", user.Email), ("@phone", user.Phone), ("@hash", user.PasswordHash),
+            ("@name", user.FullName), ("@active", user.IsActive));
+    }
+
+    public async Task<User?> GetByIdAsync(long id, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        return await DbHelper.QuerySingleAsync(conn,
+            $"SELECT {Cols} FROM users WHERE id=@id AND deleted_at IS NULL", Map, ct, ("@id", id));
+    }
+
+    public async Task<User?> GetSchoolAdminAsync(long schoolId, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        var sql = $@"SELECT {Cols} FROM users
+                     WHERE school_id=@sid AND user_type='school_admin' AND deleted_at IS NULL
+                     ORDER BY id LIMIT 1";
+        return await DbHelper.QuerySingleAsync(conn, sql, Map, ct, ("@sid", schoolId));
+    }
+
+    public async Task<long?> GetStaffIdAsync(long userId, CancellationToken ct = default)
+        => await LinkedIdAsync("staff", userId, ct);
+
+    public async Task<long?> GetStudentIdAsync(long userId, CancellationToken ct = default)
+        => await LinkedIdAsync("students", userId, ct);
+
+    /// <summary>`table` is a compile-time literal from the two callers above — never user input.</summary>
+    private async Task<long?> LinkedIdAsync(string table, long userId, CancellationToken ct)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        var id = await DbHelper.ScalarLongAsync(conn,
+            $"SELECT id FROM {table} WHERE user_id=@uid AND deleted_at IS NULL ORDER BY id LIMIT 1", ct,
+            ("@uid", userId));
+        return id == 0 ? null : id;
+    }
+
     public async Task CreateResetTokenAsync(long userId, string token, DateTime expiresAt, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);

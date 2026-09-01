@@ -1,6 +1,10 @@
 namespace SchoolErp.Application.DTOs.Admin;
 
-public record NoticeDto(long Id, string Title, string Body, string Audience, DateTime PublishDate);
+public record NoticeDto(
+    long Id, string Title, string Body, string Audience, DateTime PublishDate,
+    // Who published it. The client compares CreatedBy with the signed-in user to offer a
+    // "Mine" filter without a second round trip.
+    long CreatedBy, string? CreatedByName);
 
 public class CreateNoticeDto
 {

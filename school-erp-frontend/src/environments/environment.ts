@@ -14,7 +14,7 @@ const production = hostname !== 'localhost' && hostname !== '127.0.0.1';
 
 const apiBaseUrl = production
   ? `${window.location.origin}/api`
-  : 'http://localhost:5162/api';
+  : 'http://localhost:5204/api';
 
 export const environment = {
   production,
@@ -24,4 +24,6 @@ export const environment = {
   adminApi: `${apiBaseUrl}/admin`,
   teacherApi: `${apiBaseUrl}/teacher`,
   studentApi: `${apiBaseUrl}/student`,
+  /** Shared country/state/city master — readable by every signed-in role. */
+  geographyApi: `${apiBaseUrl}/geography`,
 };

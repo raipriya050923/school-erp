@@ -160,8 +160,8 @@ export class AdDashboardComponent {
 
     <!-- View admission modal -->
     @if (viewing; as s) {
-      <div class="modal-backdrop" (click)="viewing = null">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>{{ s.name }}</h2>
             <button class="modal-close" (click)="viewing = null" aria-label="Close">✕</button>
@@ -203,8 +203,8 @@ export class AdDashboardComponent {
 
     <!-- New admission / edit student modal -->
     @if (showForm) {
-      <div class="modal-backdrop" (click)="showForm = false">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>{{ editing ? 'Edit Student — ' + editing.adm : 'New Admission — AY 2083' }}</h2>
             <button class="modal-close" (click)="showForm = false" aria-label="Close">✕</button>
@@ -488,8 +488,8 @@ export class AdStudentsComponent {
 
     <!-- View teacher modal -->
     @if (viewing; as t) {
-      <div class="modal-backdrop" (click)="viewing = null">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>{{ t.name }}</h2>
             <button class="modal-close" (click)="viewing = null" aria-label="Close">✕</button>
@@ -522,8 +522,8 @@ export class AdStudentsComponent {
 
     <!-- Add / edit teacher modal -->
     @if (showForm) {
-      <div class="modal-backdrop" (click)="showForm = false">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>{{ editing ? 'Edit Teacher — ' + editing.code : 'Add Teacher' }}</h2>
             <button class="modal-close" (click)="showForm = false" aria-label="Close">✕</button>
@@ -780,8 +780,8 @@ export class AdTeachersComponent {
 
     <!-- Add / edit class modal -->
     @if (showClass) {
-      <div class="modal-backdrop" (click)="showClass = false">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>{{ editingClass ? 'Rename Class — ' + editingClass.name : 'Add New Class' }}</h2>
             <button class="modal-close" (click)="showClass = false" aria-label="Close">✕</button>
@@ -823,8 +823,8 @@ export class AdTeachersComponent {
 
     <!-- Add / edit section modal -->
     @if (showSection) {
-      <div class="modal-backdrop" (click)="showSection = false">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>{{ editingSection ? 'Edit Section' : 'Add Section' }}</h2>
             <button class="modal-close" (click)="showSection = false" aria-label="Close">✕</button>
@@ -1152,8 +1152,8 @@ export class AdAttendanceComponent {
 
     <!-- Generate invoices modal -->
     @if (showGenerate) {
-      <div class="modal-backdrop" (click)="showGenerate = false">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>Generate Monthly Invoices</h2>
             <button class="modal-close" (click)="showGenerate = false" aria-label="Close">✕</button>
@@ -1194,8 +1194,8 @@ export class AdAttendanceComponent {
 
     <!-- Record payment modal -->
     @if (paying; as inv) {
-      <div class="modal-backdrop" (click)="paying = null">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>Record Payment — {{ inv.no }}</h2>
             <button class="modal-close" (click)="paying = null" aria-label="Close">✕</button>
@@ -1245,8 +1245,8 @@ export class AdAttendanceComponent {
 
     <!-- View invoice modal -->
     @if (viewing; as inv) {
-      <div class="modal-backdrop" (click)="viewing = null">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>Invoice {{ inv.no }}</h2>
             <button class="modal-close" (click)="viewing = null" aria-label="Close">✕</button>
@@ -1453,8 +1453,8 @@ export class AdFeesComponent {
 
     <!-- Schedule / edit exam modal -->
     @if (showExam) {
-      <div class="modal-backdrop" (click)="showExam = false">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>{{ editingExam ? 'Edit Exam' : 'Schedule New Exam' }}</h2>
             <button class="modal-close" (click)="showExam = false" aria-label="Close">✕</button>
@@ -1501,8 +1501,8 @@ export class AdFeesComponent {
 
     <!-- Add subject paper modal -->
     @if (showPaper) {
-      <div class="modal-backdrop" (click)="showPaper = false">
-        <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-backdrop">
+        <div class="modal">
           <div class="modal-head">
             <h2>Add Subject — {{ paperExam?.name }}</h2>
             <button class="modal-close" (click)="showPaper = false" aria-label="Close">✕</button>

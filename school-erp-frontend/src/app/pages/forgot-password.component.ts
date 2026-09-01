@@ -42,7 +42,7 @@ import { AuthService } from '../core/auth.service';
   styles: [`
     .auth-page { min-height: 100vh; display: grid; place-items: center; background: var(--page); padding: 24px; }
     .auth-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-md); padding: 30px; }
-    .auth-logo { font-size: 26px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 14px; background: linear-gradient(135deg, #3987e5, #1c5cab); color:#fff; box-shadow: 0 8px 20px rgba(42,120,214,0.4); margin-bottom: 18px; }
+    .auth-logo { font-size: 26px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 14px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color:#fff; box-shadow: 0 8px 20px rgba(37,99,235,0.35); margin-bottom: 18px; }
     h2 { font-size: 20px; font-weight: 800; margin-bottom: 5px; }
     .hint { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
     .err { background: var(--crit-tint); color: var(--crit-text); font-size: 13px; padding: 9px 12px; border-radius: 8px; margin-bottom: 14px; }

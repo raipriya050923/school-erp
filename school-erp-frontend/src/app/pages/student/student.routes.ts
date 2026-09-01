@@ -11,6 +11,7 @@ import {
   StFeesComponent,
   StNoticesComponent,
 } from './student-api.pages';
+import { ProfilePageComponent } from '../../shared/profile.page';
 
 export const STUDENT_ROUTES: Routes = [
   {
@@ -23,7 +24,7 @@ export const STUDENT_ROUTES: Routes = [
         { label: 'Dashboard', path: 'dashboard', icon: 'grid' },
         { label: 'Attendance', path: 'attendance', icon: 'clipboard' },
         { label: 'Timetable', path: 'timetable', icon: 'calendar' },
-        { label: 'Homework', path: 'homework', icon: 'book' },
+        // Homework is hidden from the sidebar; the route below still resolves if linked to.
         { label: 'Exams & Results', path: 'exams', icon: 'exam' },
         { label: 'Fees', path: 'fees', icon: 'money' },
         { label: 'Notices', path: 'notices', icon: 'bell' },
@@ -31,6 +32,7 @@ export const STUDENT_ROUTES: Routes = [
     },
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      { path: 'profile', component: ProfilePageComponent },
       { path: 'dashboard', component: StDashboardComponent },
       { path: 'attendance', component: StAttendanceComponent },
       { path: 'timetable', component: StTimetableComponent },

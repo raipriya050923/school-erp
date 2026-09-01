@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SchoolErp.Application.DTOs.Schools;
 using SchoolErp.Application.Interfaces.Services;
@@ -6,6 +7,7 @@ namespace SchoolErp.Api.Controllers;
 
 [ApiController]
 [Route("api/super-admin/schools")]
+[Authorize(Roles = "super_admin")]
 public class SchoolsController : ControllerBase
 {
     private readonly ISchoolService _service;
@@ -23,11 +25,16 @@ public class SchoolsController : ControllerBase
         return school is null ? NotFound() : Ok(school);
     }
 
+    /// <summary>
+    /// Onboards a school and provisions its first school_admin login. The response carries the
+    /// generated password in plaintext — it is never persisted or retrievable afterwards, so the
+    /// caller must surface it to the super admin immediately.
+    /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateSchoolDto dto, CancellationToken ct)
     {
-        var id = await _service.CreateAsync(dto, ct);
-        return CreatedAtAction(nameof(Get), new { id }, new { id });
+        var result = await _service.CreateAsync(dto, ct);
+        return CreatedAtAction(nameof(Get), new { id = result.SchoolId }, result);
     }
 
     [HttpPut("{id:long}")]
@@ -36,6 +43,14 @@ public class SchoolsController : ControllerBase
         await _service.UpdateAsync(id, dto, ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Issues a new password for the school's administrator and returns it once. The previous
+    /// password is unrecoverable by design, so this is the only way to restore access.
+    /// </summary>
+    [HttpPost("{id:long}/admin/reset-password")]
+    public async Task<IActionResult> ResetAdminPassword(long id, CancellationToken ct)
+        => Ok(await _service.ResetAdminPasswordAsync(id, ct));
 
     /// <summary>Activate / suspend / terminate a school.</summary>
     [HttpPatch("{id:long}/status")]

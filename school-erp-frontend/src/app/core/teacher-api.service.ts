@@ -5,7 +5,7 @@ import { environment } from '../../environments/environment';
 
 export interface TeacherProfile {
   id: number; employeeCode: string; name: string;
-  subject: string | null; classesTaught: string | null;
+  subject: string | null;
   phone: string | null; email: string | null; qualification: string | null; joiningDate: string | null;
 }
 export interface MyClass {
@@ -28,8 +28,57 @@ export interface TeacherDashboard {
 export interface AttendanceRow { studentId: number; rollNo: string | null; name: string; status: string; }
 export interface ExamPaper { id: number; classLabel: string | null; subject: string; examDate: string | null; time: string | null; room: string | null; fullMarks: number; }
 export interface Exam { id: number; name: string; type: string | null; startDate: string | null; endDate: string | null; classes: string | null; status: string; paperCount: number; papers: ExamPaper[]; }
-export interface MarkRow { studentId: number; rollNo: string | null; name: string; marks: number | null; }
+/**
+ * A section this teacher may enter marks for, and which subjects of it. Driven by their subject
+ * assignments, so it covers sections they teach without being class teacher of, and leaves out
+ * subjects another teacher holds.
+ */
+export interface TeachingSection { className: string; sectionName: string; studentCount: number; subjects: string[]; }
+
+/** One row of the marks grid: a student and their mark for each subject, keyed by subject name. */
+export interface MarksGridStudent {
+  studentId: number; rollNo: string | null; name: string;
+  marks: Record<string, number | null>;
+}
+export interface MarksGridSubject { subject: string; fullMarks: number; examDate: string | null; }
+export interface MarksGrid { subjects: MarksGridSubject[]; students: MarksGridStudent[]; }
+
+/** One paper of an exam, with how much of the section has been marked. */
+export interface MarksProgress {
+  subject: string; fullMarks: number; examDate: string | null;
+  entered: number; total: number;
+}
+/* ---- class teacher's result review ---- */
+
+export interface MyClassSection { className: string; sectionName: string; studentCount: number; }
+export interface ClassResultSubject {
+  subject: string; fullMarks: number; entered: number; total: number; teacherName: string | null;
+}
+export interface ClassResultStudent {
+  studentId: number; rollNo: string | null; name: string;
+  marks: Record<string, number | null>;
+  /** Stored figures, written when marks were last saved — not recomputed in the browser. */
+  total: number; fullTotal: number; percent: number; grade: string; missing: number;
+  /** False while a paper is unmarked: the percentage is real but can still rise. */
+  isComplete: boolean;
+}
+export interface ClassResult {
+  examId: number; examName: string; examStatus: string; isPublished: boolean;
+  className: string; sectionName: string;
+  subjects: ClassResultSubject[]; students: ClassResultStudent[]; missingMarks: number;
+  /** pending | approved — whether this section's class teacher has signed the sheet off. */
+  approvalStatus: string;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  approvalRemarks: string | null;
+  /** True once every student has every paper marked. */
+  canApprove: boolean;
+}
+
 export interface TimetableSlot { dayOfWeek: number; periodNo: number; time: string | null; label: string | null; room: string | null; }
+export interface TimetablePeriod { periodNo: number; name: string; timeLabel: string; isBreak: boolean; }
+/** Columns travel with the slots: period numbers include breaks, so a fixed 1..6 grid mislabels them. */
+export interface TeacherTimetable { periods: TimetablePeriod[]; slots: TimetableSlot[]; }
 
 @Injectable({ providedIn: 'root' })
 export class TeacherApiService {
@@ -67,17 +116,57 @@ export class TeacherApiService {
 
   // Marks
   getExams(): Observable<Exam[]> { return this.http.get<Exam[]>(`${this.base}/exams`); }
-  getMarks(examId: number, className: string, sectionName: string, subject: string): Observable<MarkRow[]> {
-    const p = new HttpParams().set('examId', examId).set('className', className).set('sectionName', sectionName).set('subject', subject);
-    return this.http.get<MarkRow[]>(`${this.base}/marks`, { params: p });
+  marksProgress(examId: number, className: string, sectionName: string): Observable<MarksProgress[]> {
+    const p = new HttpParams().set('examId', examId).set('className', className).set('sectionName', sectionName);
+    return this.http.get<MarksProgress[]>(`${this.base}/marks/progress`, { params: p });
   }
-  saveMarks(examId: number, className: string, sectionName: string, subject: string, fullMarks: number, entries: { studentId: number; marks: number | null }[]): Observable<void> {
-    return this.http.post<void>(`${this.base}/marks`, { examId, className, sectionName, subject, fullMarks, entries });
+  teachingSections(): Observable<TeachingSection[]> {
+    return this.http.get<TeachingSection[]>(`${this.base}/marks/sections`);
+  }
+  marksGrid(examId: number, className: string, sectionName: string): Observable<MarksGrid> {
+    const p = new HttpParams().set('examId', examId).set('className', className).set('sectionName', sectionName);
+    return this.http.get<MarksGrid>(`${this.base}/marks/grid`, { params: p });
+  }
+  saveMarksGrid(examId: number, className: string, sectionName: string,
+                entries: { studentId: number; subject: string; marks: number | null }[]): Observable<{ saved: number }> {
+    return this.http.post<{ saved: number }>(`${this.base}/marks/grid`, { examId, className, sectionName, entries });
+  }
+
+  // Results — read-only review of a section this teacher is class teacher of
+  myClassSections(): Observable<MyClassSection[]> {
+    return this.http.get<MyClassSection[]>(`${this.base}/results/sections`);
+  }
+  approveResult(examId: number, className: string, sectionName: string, approve: boolean, remarks?: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/results/approve`, { examId, className, sectionName, approve, remarks });
+  }
+  classResult(examId: number, className: string, sectionName: string): Observable<ClassResult> {
+    const p = new HttpParams().set('examId', examId).set('className', className).set('sectionName', sectionName);
+    return this.http.get<ClassResult>(`${this.base}/results/class`, { params: p });
   }
 
   // Timetable
-  getTimetable(): Observable<TimetableSlot[]> { return this.http.get<TimetableSlot[]>(`${this.base}/timetable`); }
+  getTimetable(): Observable<TeacherTimetable> { return this.http.get<TeacherTimetable>(`${this.base}/timetable`); }
+
+  // My leave — the service scopes every read and write to the signed-in teacher
+  getMyLeave(): Observable<LeaveApplication[]> {
+    return this.http.get<LeaveApplication[]>(`${this.base}/leave`);
+  }
+  getLeaveTypes(): Observable<LeaveType[]> {
+    return this.http.get<LeaveType[]>(`${this.base}/leave/types`);
+  }
+  applyLeave(dto: ApplyLeave): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/leave`, dto);
+  }
 }
+
+export interface LeaveType { id: number; name: string; isPaid: boolean; maxDaysPerYear: number | null; }
+export interface LeaveApplication {
+  id: number; leaveTypeId: number; leaveTypeName: string | null; applicantName: string | null;
+  fromDate: string; toDate: string; days: number; reason: string;
+  status: string; reviewedByName: string | null; reviewedAt: string | null; reviewRemarks: string | null;
+  createdAt: string;
+}
+export interface ApplyLeave { leaveTypeId: number; fromDate: string; toDate: string; reason: string; }
 
 export function hwStatusBadge(s: string): string {
   switch (s.toLowerCase()) {

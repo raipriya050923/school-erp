@@ -1,17 +1,19 @@
-using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Http;
+using SchoolErp.Application.Common;
 using SchoolErp.Application.Interfaces.Services;
 
 namespace SchoolErp.Infrastructure.Services;
 
-/// <summary>Reads the logged-in student's id from config (Student:CurrentStudentId).</summary>
+/// <summary>
+/// Resolves the signed-in student from token claims. <c>student_id</c> is looked up from
+/// <c>students.user_id</c> at login.
+/// </summary>
 public class CurrentStudent : ICurrentStudent
 {
-    public long StudentId { get; }
-    public long SchoolId { get; }
+    private readonly IHttpContextAccessor _accessor;
 
-    public CurrentStudent(IConfiguration config)
-    {
-        StudentId = long.TryParse(config["Student:CurrentStudentId"], out var id) ? id : 1;
-        SchoolId = long.TryParse(config["School:CurrentSchoolId"], out var school) ? school : 1;
-    }
+    public CurrentStudent(IHttpContextAccessor accessor) => _accessor = accessor;
+
+    public long StudentId => ClaimsAccessor.Require(_accessor, ErpClaims.StudentId, "student record");
+    public long SchoolId => ClaimsAccessor.Require(_accessor, ErpClaims.SchoolId, "school id");
 }

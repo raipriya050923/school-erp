@@ -25,7 +25,7 @@ import { DataService } from '../../core/data.service';
       }
     </div>
 
-    <div class="grid-2">
+    <div>
       <div class="card">
         <div class="card-head"><h2 class="grow">Today’s Schedule (Friday)</h2></div>
         <div class="table-wrap">
@@ -47,24 +47,6 @@ import { DataService } from '../../core/data.service';
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-head"><h2 class="grow">Homework Needing Attention</h2></div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Assignment</th><th>Class</th><th class="num">Submitted</th><th>Status</th></tr></thead>
-            <tbody>
-              @for (h of data.teacherHomework.slice(0, 3); track h.title) {
-                <tr>
-                  <td class="td-main">{{ h.title }}</td>
-                  <td>{{ h.cls }}</td>
-                  <td class="num">{{ h.submitted }}/{{ h.total }}</td>
-                  <td><span class="badge" [class]="'badge ' + data.badgeClass(h.status)">{{ h.status }}</span></td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   `,
 })

@@ -2,7 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import {
   StudentApiService, studentApiError, feeBadge, attBadge,
-  StudentDashboard, StudentAttendance, StudentTimetableSlot, StudentHomework,
+  StudentDashboard, StudentAttendance, StudentTimetableSlot, StudentTimetablePeriod, StudentHomework,
   StudentExams, StudentResult, StudentFee, StudentNotice,
 } from '../../core/student-api.service';
 
@@ -22,7 +22,7 @@ import {
         <div class="stat-tile"><div class="stat-label">Attendance</div><div class="stat-value">{{ d.attendancePercent }}%</div><div class="stat-sub">{{ d.presentDays }} of {{ d.totalDays }} days</div></div>
         <div class="stat-tile"><div class="stat-label">Pending Homework</div><div class="stat-value">{{ d.pendingHomework }}</div><div class="stat-sub">to submit</div></div>
         <div class="stat-tile"><div class="stat-label">Next Exam</div><div class="stat-value">{{ d.nextExamDate ? (d.nextExamDate | date:'MMM d') : '—' }}</div><div class="stat-sub">{{ d.nextExamName || 'nothing scheduled' }}</div></div>
-        <div class="stat-tile"><div class="stat-label">Fee Due</div><div class="stat-value">Rs {{ d.feeDue | number }}</div><div class="stat-sub" [class.down]="d.feeDue > 0">outstanding</div></div>
+        <div class="stat-tile"><div class="stat-label">Fee Due</div><div class="stat-value">₹{{ d.feeDue | number }}</div><div class="stat-sub" [class.down]="d.feeDue > 0">outstanding</div></div>
       </div>
 
       <div class="card">
@@ -105,20 +105,53 @@ export class StAttendanceComponent implements OnInit {
   selector: 'app-st-timetable',
   standalone: true,
   template: `
-    <div class="page-head"><div class="grow"><h1>Class Timetable</h1><div class="page-sub">Weekly schedule</div></div></div>
+    <div class="page-head">
+      <div class="grow">
+        <h1>Class Timetable</h1>
+        <div class="page-sub">
+          @if (label) { {{ label }} }@if (label && slots.length) { · }@if (slots.length) { {{ slots.length }} periods across {{ days.length }} days }
+          @if (!label && !slots.length) { Weekly schedule }
+        </div>
+      </div>
+    </div>
     @if (loading) { <div class="card"><div class="empty">Loading…</div></div> }
     @else if (error) { <div class="card"><div class="empty">{{ error }}</div></div> }
+    @else if (!periods.length) {
+      <div class="card"><div class="empty">No periods are set up for your school yet.</div></div>
+    }
+    @else if (!slots.length) {
+      <div class="card"><div class="empty">
+        No timetable has been published for {{ label || 'your class' }} yet.
+        Your school will add it under Timetable.
+      </div></div>
+    }
     @else {
       <div class="card">
         <div class="table-wrap">
           <table class="tt-grid">
-            <thead><tr><th>Day</th>@for (p of periods; track p) { <th>P{{ p }}</th> }</tr></thead>
+            <thead>
+              <tr>
+                <th>Day</th>
+                @for (p of periods; track p.periodNo) {
+                  <th [class.tt-break]="p.isBreak">{{ p.name }}<div class="tt-meta">{{ p.timeLabel }}</div></th>
+                }
+              </tr>
+            </thead>
             <tbody>
               @for (d of days; track d.num) {
                 <tr>
                   <th>{{ d.label }}</th>
-                  @for (p of periods; track p) {
-                    <td>@if (slot(d.num, p); as s) { <span class="tt-subject">{{ s.subject }}</span><div class="tt-meta">{{ s.time }} · {{ s.room }}</div> } @else { <span class="tt-meta">—</span> }</td>
+                  @for (p of periods; track p.periodNo) {
+                    @if (p.isBreak) {
+                      <td class="tt-break"><span class="tt-meta">Break</span></td>
+                    } @else {
+                      <td>
+                        @if (slot(d.num, p.periodNo); as s) {
+                          <span class="tt-subject">{{ s.subject }}</span>
+                          <div class="tt-meta">{{ s.time }}@if (s.room) { · {{ s.room }} }</div>
+                        } @else { <span class="tt-meta">—</span> }
+                      </td>
+                    }
                   }
                 </tr>
               }
@@ -132,15 +165,30 @@ export class StAttendanceComponent implements OnInit {
 export class StTimetableComponent implements OnInit {
   private readonly api = inject(StudentApiService);
   slots: StudentTimetableSlot[] = [];
+  /** Columns, from the school's own period list — breaks included, so nothing shifts. */
+  periods: StudentTimetablePeriod[] = [];
+  /** Rows, from the school's working days rather than an assumed Sunday–Friday week. */
+  days: { num: number; label: string }[] = [];
+  /** "Grade 1 — A": names the class, so an empty grid says whose it is. */
+  label = '';
   loading = true;
   error = '';
-  readonly days = [
-    { num: 1, label: 'Sunday' }, { num: 2, label: 'Monday' }, { num: 3, label: 'Tuesday' },
-    { num: 4, label: 'Wednesday' }, { num: 5, label: 'Thursday' }, { num: 6, label: 'Friday' },
+
+  private static readonly DAY_NAMES = [
+    '', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
   ];
-  readonly periods = [1, 2, 3, 4, 5, 6];
+
   ngOnInit(): void {
-    this.api.getTimetable().subscribe({ next: s => { this.slots = s; this.loading = false; }, error: e => { this.error = studentApiError(e); this.loading = false; } });
+    this.api.getTimetable().subscribe({
+      next: t => {
+        this.label = [t.className, t.sectionName].filter(Boolean).join(' — ');
+        this.periods = t.periods;
+        this.days = t.workingDays.map(n => ({ num: n, label: StTimetableComponent.DAY_NAMES[n] ?? `Day ${n}` }));
+        this.slots = t.slots;
+        this.loading = false;
+      },
+      error: e => { this.error = studentApiError(e); this.loading = false; },
+    });
   }
   slot(day: number, period: number): StudentTimetableSlot | null {
     return this.slots.find(s => s.dayOfWeek === day && s.periodNo === period) ?? null;
@@ -272,8 +320,8 @@ export class StExamsComponent implements OnInit {
     @else if (error) { <div class="card"><div class="empty">{{ error }}</div></div> }
     @else {
       <div class="stat-grid">
-        <div class="stat-tile"><div class="stat-label">Outstanding</div><div class="stat-value">Rs {{ outstanding | number }}</div><div class="stat-sub down">across {{ unpaidCount }} invoice(s)</div></div>
-        <div class="stat-tile"><div class="stat-label">Paid</div><div class="stat-value">Rs {{ paidTotal | number }}</div></div>
+        <div class="stat-tile"><div class="stat-label">Outstanding</div><div class="stat-value">₹{{ outstanding | number }}</div><div class="stat-sub down">across {{ unpaidCount }} invoice(s)</div></div>
+        <div class="stat-tile"><div class="stat-label">Paid</div><div class="stat-value">₹{{ paidTotal | number }}</div></div>
         <div class="stat-tile"><div class="stat-label">Invoices</div><div class="stat-value">{{ list.length }}</div></div>
       </div>
       <div class="card">
@@ -286,9 +334,9 @@ export class StExamsComponent implements OnInit {
                 <tr>
                   <td class="td-sub">{{ f.invoiceNo }}</td>
                   <td class="td-main">{{ f.month }}</td>
-                  <td class="num">Rs {{ f.amount | number }}</td>
-                  <td class="num">Rs {{ f.paid | number }}</td>
-                  <td class="num">@if (f.balance > 0) { <span style="color:var(--crit-text);font-weight:600;">Rs {{ f.balance | number }}</span> } @else { <span class="td-sub">—</span> }</td>
+                  <td class="num">₹{{ f.amount | number }}</td>
+                  <td class="num">₹{{ f.paid | number }}</td>
+                  <td class="num">@if (f.balance > 0) { <span style="color:var(--crit-text);font-weight:600;">₹{{ f.balance | number }}</span> } @else { <span class="td-sub">—</span> }</td>
                   <td class="td-sub">{{ f.dueDate | date:'mediumDate' }}</td>
                   <td><span class="badge" [class]="'badge ' + badge(f.status)">{{ label(f.status) }}</span></td>
                 </tr>

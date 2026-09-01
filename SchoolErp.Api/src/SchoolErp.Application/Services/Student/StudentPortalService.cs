@@ -10,11 +10,16 @@ namespace SchoolErp.Application.Services.StudentPortal;
 public class StudentPortalService : IStudentPortalService
 {
     private readonly IStudentPortalRepository _repo;
+    private readonly ITimetableRepository _timetable;
+    private readonly ISchoolRepository _schools;
     private readonly ICurrentStudent _me;
 
-    public StudentPortalService(IStudentPortalRepository repo, ICurrentStudent me)
+    public StudentPortalService(IStudentPortalRepository repo, ITimetableRepository timetable,
+        ISchoolRepository schools, ICurrentStudent me)
     {
         _repo = repo;
+        _timetable = timetable;
+        _schools = schools;
         _me = me;
     }
 
@@ -59,11 +64,36 @@ public class StudentPortalService : IStudentPortalService
         return new StudentAttendanceDto(overall, present, totalDays, months, recent);
     }
 
-    public async Task<IReadOnlyList<StudentTimetableSlotDto>> GetTimetableAsync(CancellationToken ct = default)
+    public async Task<StudentTimetableDto> GetTimetableAsync(CancellationToken ct = default)
     {
         var me = await ProfileOrThrow(ct);
         var slots = await _repo.GetTimetableAsync(_me.SchoolId, me.ClassName ?? "", me.SectionName ?? "", ct);
-        return slots.Select(s => new StudentTimetableSlotDto(s.DayOfWeek, s.PeriodNo, s.TimeLabel, s.Subject, s.Room)).ToList();
+
+        // Columns come from the school's own period list. period_no counts breaks, so the fixed
+        // 1..6 grid the page used to draw put a blank column where the break is, mislabelled
+        // every period after it, and left the last period of the day off the table entirely.
+        var periods = await _timetable.GetPeriodsAsync(_me.SchoolId, ct);
+        if (periods.Count == 0)
+        {
+            await _timetable.SeedDefaultPeriodsAsync(_me.SchoolId, ct);
+            periods = await _timetable.GetPeriodsAsync(_me.SchoolId, ct);
+        }
+
+        var school = await _schools.GetByIdAsync(_me.SchoolId, ct);
+        var working = (school?.WorkingDays ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => int.TryParse(d, out var n) ? n : 0)
+            .Where(n => n is >= 1 and <= 7)
+            .Distinct().OrderBy(n => n).ToList();
+        // A school that has not chosen its week still needs one to draw.
+        if (working.Count == 0) working = new List<int> { 1, 2, 3, 4, 5, 6 };
+
+        return new StudentTimetableDto(
+            me.ClassName, me.SectionName,
+            periods.Select((x, i) => new StudentTimetablePeriodDto(
+                i + 1, x.Name, $"{x.StartTime:hh\\:mm}–{x.EndTime:hh\\:mm}", x.IsBreak)).ToList(),
+            working,
+            slots.Select(x => new StudentTimetableSlotDto(x.DayOfWeek, x.PeriodNo, x.TimeLabel, x.Subject, x.Room)).ToList());
     }
 
     public async Task<IReadOnlyList<StudentHomeworkDto>> GetHomeworkAsync(CancellationToken ct = default)

@@ -29,6 +29,10 @@ public class ExceptionHandlingMiddleware
         {
             await WriteAsync(context, StatusCodes.Status400BadRequest, "validation_error", ex.Message);
         }
+        catch (ForbiddenException ex)
+        {
+            await WriteAsync(context, StatusCodes.Status403Forbidden, "forbidden", ex.Message);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception");

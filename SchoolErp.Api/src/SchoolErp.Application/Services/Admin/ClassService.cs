@@ -48,8 +48,27 @@ public class ClassService : IClassService
 
     public async Task DeleteClassAsync(long id, CancellationToken ct = default)
     {
-        _ = await _repo.GetByIdAsync(_school.SchoolId, id, ct) ?? throw new NotFoundException($"Class {id} not found.");
+        var cls = await _repo.GetByIdAsync(_school.SchoolId, id, ct)
+                  ?? throw new NotFoundException($"Class {id} not found.");
+
+        // Refuse where real records would be orphaned; subject picks, teacher assignments and
+        // timetable slots go with the class, so those never block it.
+        var usage = await _repo.GetClassUsageAsync(_school.SchoolId, id, ct);
+        if (usage.Any)
+            throw new ValidationException($"{cls.Name} cannot be deleted — {Describe(usage)}.");
+
         await _repo.DeleteClassAsync(_school.SchoolId, id, ct);
+    }
+
+    /// <summary>Names what is in the way, so the admin knows what to clear first.</summary>
+    private static string Describe(ClassUsage u)
+    {
+        var parts = new List<string>();
+        if (u.Students > 0) parts.Add($"{u.Students} student(s) are in it");
+        if (u.Enrollments > 0) parts.Add($"{u.Enrollments} enrolment record(s) reference it");
+        if (u.FeeStructures > 0) parts.Add($"{u.FeeStructures} fee structure(s) are set for it");
+        if (u.ExamSchedules > 0) parts.Add($"{u.ExamSchedules} exam schedule(s) use it");
+        return string.Join(", and ", parts) + ". Move or remove those first";
     }
 
     public async Task<long> AddSectionAsync(SaveSectionDto dto, CancellationToken ct = default)
@@ -70,6 +89,11 @@ public class ClassService : IClassService
         await _repo.UpdateSectionAsync(_school.SchoolId, id, name, dto.Teacher, ct);
     }
 
-    public Task DeleteSectionAsync(long id, CancellationToken ct = default)
-        => _repo.DeleteSectionAsync(_school.SchoolId, id, ct);
+    public async Task DeleteSectionAsync(long id, CancellationToken ct = default)
+    {
+        var usage = await _repo.GetSectionUsageAsync(_school.SchoolId, id, ct);
+        if (usage.Any)
+            throw new ValidationException($"This section cannot be deleted — {Describe(usage)}.");
+        await _repo.DeleteSectionAsync(_school.SchoolId, id, ct);
+    }
 }
