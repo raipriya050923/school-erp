@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api/api_client.dart';
+import '../../core/api/api_http.dart';
 import '../../core/student_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/widgets/api_section.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/common.dart';
 import '../../data/api_models.dart';
 import '../dashboard/dashboard_screen.dart' show NotificationBell;
+import 'receipt_sheet.dart';
 
 /// Fee invoices for the signed-in student, from `GET /api/student/fees`.
 class FeesScreen extends StatefulWidget {
@@ -228,7 +232,95 @@ class _InvoiceCard extends StatelessWidget {
               ],
             ),
           ],
+          // Offered the moment anything has been paid, not only once the
+          // invoice is settled: a family paying in instalments needs the
+          // receipt for the first one straight away, which is the whole
+          // reason receipts are per payment rather than per invoice.
+          if (fee.paid > 0) ...<Widget>[
+            const SizedBox(height: AppSpacing.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _showReceipts(context, fee),
+                icon: const Icon(Icons.receipt_long_outlined, size: 17),
+                label: const Text('Receipts'),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// One payment opens its receipt straight away; several raise a picker.
+  /// Making someone choose from a list of one is a tap that teaches nothing.
+  Future<void> _showReceipts(BuildContext context, StudentFee fee) async {
+    final List<FeePayment> payments;
+    try {
+      payments = await ApiClient.instance.invoicePayments(fee.id);
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    if (payments.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Nothing has been confirmed against this invoice yet. A payment you '
+            'submitted appears here once the school confirms it.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (payments.length == 1) {
+      await ReceiptSheet.show(
+        context,
+        load: () => ApiClient.instance.paymentReceipt(payments.first.id),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (BuildContext sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Text(
+                '${fee.invoiceNo ?? 'Invoice'} — ${payments.length} payments',
+                style: Theme.of(sheetContext).textTheme.titleSmall,
+              ),
+            ),
+            for (final FeePayment p in payments)
+              ListTile(
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: Text(p.receiptNo),
+                subtitle: Text(
+                  <String>[
+                    if (p.paidDate != null) _formatDate(p.paidDate!),
+                    if ((p.method ?? '').isNotEmpty) p.method!,
+                  ].join(' · '),
+                ),
+                trailing: Text(Format.money(p.amount)),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  ReceiptSheet.show(
+                    context,
+                    load: () => ApiClient.instance.paymentReceipt(p.id),
+                  );
+                },
+              ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+        ),
       ),
     );
   }

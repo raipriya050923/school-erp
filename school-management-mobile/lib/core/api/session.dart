@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -80,12 +82,29 @@ class Session {
 
   String? get token => isSignedIn ? _user!.token : null;
 
+  /// Raised while the API refuses every endpoint until the holder replaces a
+  /// password their school issued. Listened to by the root, so flipping it
+  /// sends them to the set-password screen wherever they happen to be.
+  final ValueNotifier<bool> passwordChangeRequired = ValueNotifier<bool>(false);
+
+  /// Called when the API answers `password_change_required`.
+  ///
+  /// The flag normally arrives with the login response, but an administrator
+  /// can reset an account while its holder is signed in — and then every
+  /// request fails with a permissions error that explains nothing and offers
+  /// no way out. This turns that into the same redirect a fresh login gets.
+  void markPasswordChangeRequired() {
+    if (passwordChangeRequired.value) return;
+    passwordChangeRequired.value = true;
+  }
+
   /// Signs the user in for this session, persisting only if they asked.
   ///
   /// Storage problems never block sign-in: the session still works in memory,
   /// the user just has to sign in again next launch.
   Future<void> save(AuthUser user, {required bool remember}) async {
     _user = user;
+    passwordChangeRequired.value = user.mustChangePassword;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       if (remember) {

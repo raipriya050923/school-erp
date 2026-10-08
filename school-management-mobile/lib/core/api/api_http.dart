@@ -9,10 +9,16 @@ import 'session.dart';
 
 /// A failure worth showing the user verbatim.
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode});
+  const ApiException(this.message, {this.statusCode, this.errorCode});
 
   final String message;
   final int? statusCode;
+
+  /// The API's own `error` slug — `validation_error`, `not_found`,
+  /// `password_change_required` and so on. Carried so a caller can react to a
+  /// specific failure without matching on the message text, which is written
+  /// for people and changes.
+  final String? errorCode;
 
   @override
   String toString() => message;
@@ -81,6 +87,23 @@ abstract class ApiHttp {
     decodeAny(response, allowEmpty: true);
   }
 
+  /// PATCH under [base], for the endpoints that change one field of a record
+  /// rather than replacing it — reviewing a leave application, flipping a
+  /// status. Answers 204, so nothing is decoded.
+  Future<void> patch(String path, Map<String, dynamic> body) async {
+    late final http.Response response;
+    try {
+      response = await http
+          .patch(_uri(path), headers: headers(), body: jsonEncode(body))
+          .timeout(timeout);
+    } on SocketException {
+      throw ApiException('Cannot reach the server at ${ApiConfig.baseUrl}.');
+    } on TimeoutException {
+      throw const ApiException('The server took too long to respond.');
+    }
+    decodeAny(response, allowEmpty: true);
+  }
+
   /// POST to a full URL rather than one under [base] — used for `/auth/*`,
   /// which belongs to no single role.
   Future<Object> postJson(String url, Map<String, dynamic> body) =>
@@ -136,6 +159,17 @@ abstract class ApiHttp {
     }
 
     // The API wraps failures as { error, message }; fall back when it does not.
+    final String? code =
+        json is Map<String, dynamic> ? json['error'] as String? : null;
+
+    // Not a permissions problem, however it looks: the account is simply still
+    // on a password the school issued. Flagging the session sends the holder to
+    // the set-password screen instead of leaving them with "no access" on every
+    // screen and nothing to do about it.
+    if (code == 'password_change_required') {
+      Session.instance.markPasswordChangeRequired();
+    }
+
     final String message =
         (json is Map<String, dynamic> ? json['message'] as String? : null) ??
         (response.statusCode == 401
@@ -143,6 +177,6 @@ abstract class ApiHttp {
             : response.statusCode == 403
             ? 'Your account does not have access to this.'
             : 'Request failed (${response.statusCode}).');
-    throw ApiException(message, statusCode: response.statusCode);
+    throw ApiException(message, statusCode: response.statusCode, errorCode: code);
   }
 }

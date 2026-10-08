@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api/api_http.dart';
+import '../../core/api/staff_api.dart';
 import '../../core/loadable.dart';
 import '../../core/staff_stores.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/common.dart';
+import '../../data/api_models.dart' show FeePayment;
 import '../../data/staff_models.dart';
+import '../fees/receipt_sheet.dart';
 import 'parent_login_sheet.dart';
 import 'staff_widgets.dart';
 
@@ -278,6 +282,73 @@ class _AdminTeachersScreenState extends State<AdminTeachersScreen> {
   }
 }
 
+/// Opens the receipt for an invoice's payment, or lets the office pick when
+/// the invoice was settled in instalments. Shared by the admin fee screen; the
+/// student portal has its own copy of the same flow against its own endpoints,
+/// because the two are scoped differently even though the sheet is identical.
+Future<void> _showReceipts(BuildContext context, AdminInvoice inv) async {
+  final List<FeePayment> payments;
+  try {
+    payments = await AdminApi.instance.invoicePayments(inv.id);
+  } on ApiException catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    return;
+  }
+
+  if (!context.mounted) return;
+
+  if (payments.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No payment has been recorded against this invoice.'),
+      ),
+    );
+    return;
+  }
+
+  if (payments.length == 1) {
+    await ReceiptSheet.show(
+      context,
+      load: () => AdminApi.instance.paymentReceipt(payments.first.id),
+    );
+    return;
+  }
+
+  await showModalBottomSheet<void>(
+    context: context,
+    builder: (BuildContext sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Text(
+              '${inv.invoiceNo ?? 'Invoice'} — ${payments.length} payments',
+              style: Theme.of(sheetContext).textTheme.titleSmall,
+            ),
+          ),
+          for (final FeePayment p in payments)
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: Text(p.receiptNo),
+              subtitle: Text((p.method ?? '').isEmpty ? '—' : p.method!),
+              trailing: Text(Format.money(p.amount)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                ReceiptSheet.show(
+                  context,
+                  load: () => AdminApi.instance.paymentReceipt(p.id),
+                );
+              },
+            ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+      ),
+    ),
+  );
+}
+
 /* ----------------------------------------------------------------- fees -- */
 
 class AdminFeesScreen extends StatefulWidget {
@@ -380,6 +451,13 @@ class _AdminFeesScreenState extends State<AdminFeesScreen> {
                                   inv.balance > 0 ? inv.balance : inv.amount,
                                 ),
                                 status: inv.status,
+                                // Tappable only where there is something to
+                                // show: an invoice with nothing paid has no
+                                // receipt, and a row that opens an apology is
+                                // worse than a row that does not react.
+                                onTap: inv.paid > 0
+                                    ? () => _showReceipts(context, inv)
+                                    : null,
                               ),
                           ],
                         ),

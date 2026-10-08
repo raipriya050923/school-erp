@@ -11,8 +11,17 @@ import 'package:school_management_mobile/features/profile/profile_screen.dart';
 import 'package:school_management_mobile/features/results/results_screen.dart';
 import 'package:school_management_mobile/features/settings/settings_screen.dart';
 import 'package:school_management_mobile/features/shell/app_shell.dart';
+import 'package:school_management_mobile/features/staff/admin_attendance_report_screen.dart';
+import 'package:school_management_mobile/features/staff/admin_attendance_screen.dart';
+import 'package:school_management_mobile/features/staff/admin_exams_screen.dart';
+import 'package:school_management_mobile/features/staff/admin_leave_screen.dart';
+import 'package:school_management_mobile/features/staff/admin_notices_screen.dart';
 import 'package:school_management_mobile/features/staff/admin_screens.dart';
+import 'package:school_management_mobile/features/staff/admin_staff_attendance_screen.dart';
 import 'package:school_management_mobile/features/staff/super_admin_screens.dart';
+import 'package:school_management_mobile/features/staff/teacher_attendance_screen.dart';
+import 'package:school_management_mobile/features/staff/teacher_marks_screen.dart';
+import 'package:school_management_mobile/features/staff/teacher_results_screen.dart';
 import 'package:school_management_mobile/features/staff/teacher_screens.dart';
 import 'package:school_management_mobile/features/timetable/timetable_screen.dart';
 
@@ -43,10 +52,19 @@ void main() {
     'Teacher classes': () => const TeacherClassesScreen(),
     'Teacher timetable': () => const TeacherTimetableScreen(),
     'Teacher leave': () => const TeacherLeaveScreen(),
+    'Teacher attendance': () => const TeacherAttendanceScreen(),
+    'Teacher marks': () => const TeacherMarksScreen(),
+    'Teacher results': () => const TeacherResultsScreen(),
     'Admin home': () => const AdminHomeScreen(),
     'Admin students': () => const AdminStudentsScreen(),
     'Admin teachers': () => const AdminTeachersScreen(),
     'Admin fees': () => const AdminFeesScreen(),
+    'Admin attendance': () => const AdminAttendanceScreen(),
+    'Admin staff attendance': () => const AdminStaffAttendanceScreen(),
+    'Admin exams': () => const AdminExamsScreen(),
+    'Admin leave': () => const AdminLeaveScreen(),
+    'Admin notices': () => const AdminNoticesScreen(),
+    'Admin attendance report': () => const AdminAttendanceReportScreen(),
     'Platform home': () => const PlatformHomeScreen(),
     'Platform schools': () => const PlatformSchoolsScreen(),
     'Platform subscriptions': () => const PlatformSubscriptionsScreen(),

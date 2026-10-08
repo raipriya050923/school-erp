@@ -59,6 +59,15 @@ class ApiClient extends ApiHttp {
   Future<List<StudentFee>> fees() async =>
       (await getList('fees')).map(StudentFee.fromJson).toList();
 
+  /// Payments confirmed against one of this student's invoices — one receipt
+  /// each. The API checks the invoice belongs to them, so a changed id in the
+  /// request reaches nobody else's payments.
+  Future<List<FeePayment>> invoicePayments(int invoiceId) async =>
+      (await getList('fees/$invoiceId/payments')).map(FeePayment.fromJson).toList();
+
+  Future<FeeReceipt> paymentReceipt(int paymentId) async =>
+      FeeReceipt.fromJson(await getObject('fees/payments/$paymentId/receipt'));
+
   Future<List<StudentNotice>> notices() async =>
       (await getList('notices')).map(StudentNotice.fromJson).toList();
 

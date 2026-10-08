@@ -33,9 +33,16 @@ class SchoolPortalApp extends StatelessWidget {
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: state.themeMode,
-          home: Session.instance.isSignedIn
-              ? const RoleShell()
-              : const LoginScreen(),
+          // Rebuilt when the API reports that the password must be changed, so
+          // an account reset while its holder is signed in sends them to the
+          // set-password screen rather than failing every screen in place.
+          home: ValueListenableBuilder<bool>(
+            valueListenable: Session.instance.passwordChangeRequired,
+            builder: (BuildContext context, bool mustChange, Widget? child) =>
+                Session.instance.isSignedIn
+                    ? const RoleShell()
+                    : const LoginScreen(),
+          ),
           builder: (BuildContext context, Widget? child) {
             // Keep the layout predictable regardless of the device font scale.
             final MediaQueryData media = MediaQuery.of(context);

@@ -483,3 +483,124 @@ class StaffRow extends StatelessWidget {
     );
   }
 }
+
+
+/// One line of a register: a name, and the statuses as a segmented control.
+///
+/// Segments rather than a dropdown because the status stays visible without
+/// opening anything and changing it is one tap — a register read at a glance
+/// is the whole point. Shared by the student and staff registers, which differ
+/// only in which statuses they offer.
+class AttendanceStatusRow extends StatelessWidget {
+  const AttendanceStatusRow({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.status,
+    required this.states,
+    required this.onChanged,
+    this.trailing,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String status;
+
+  /// status value -> (the letter on the chip, its colour). Order is the order
+  /// they appear in.
+  final Map<String, (String, Color)> states;
+  final ValueChanged<String> onChanged;
+
+  /// Sits after the chips. Used by the staff register for its remarks button.
+  final Widget? trailing;
+
+  /// present / absent / late / leave — a student register.
+  static const Map<String, (String, Color)> studentStates =
+      <String, (String, Color)>{
+    'present': ('P', AppColors.green),
+    'absent': ('A', AppColors.red),
+    'late': ('L', AppColors.amber),
+    'leave': ('E', AppColors.indigo),
+  };
+
+  /// The staff register adds a half day, and distinguishes approved leave from
+  /// simply not turning up.
+  static const Map<String, (String, Color)> staffStates =
+      <String, (String, Color)>{
+    'present': ('P', AppColors.green),
+    'absent': ('A', AppColors.red),
+    'late': ('L', AppColors.amber),
+    'half_day': ('H', AppColors.blue),
+    'on_leave': ('E', AppColors.indigo),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(title, style: theme.textTheme.titleSmall),
+              if ((subtitle ?? '').isNotEmpty)
+                Text(subtitle!, style: theme.textTheme.bodySmall),
+            ],
+          ),
+        ),
+        for (final MapEntry<String, (String, Color)> e in states.entries)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: _StatusChip(
+              label: e.value.$1,
+              colour: e.value.$2,
+              selected: status == e.key,
+              onTap: () => onChanged(e.key),
+            ),
+          ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.colour,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color colour;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 32,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? colour : Colors.transparent,
+          border: Border.all(color: selected ? colour : theme.dividerColor),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : theme.textTheme.bodySmall?.color,
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -382,6 +382,7 @@ class StudentExams {
 
 class StudentFee {
   const StudentFee({
+    required this.id,
     this.invoiceNo,
     this.month,
     required this.amount,
@@ -391,6 +392,9 @@ class StudentFee {
     required this.status,
   });
 
+  /// The invoice's own id. Needed to ask for its payments; the model carried
+  /// only the printed number before, which the API does not accept as a key.
+  final int id;
   final String? invoiceNo;
   final String? month;
   final double amount;
@@ -402,6 +406,7 @@ class StudentFee {
   bool get isSettled => status.toLowerCase() == 'paid' || balance <= 0;
 
   factory StudentFee.fromJson(Map<String, dynamic> j) => StudentFee(
+    id: (j['id'] as num?)?.toInt() ?? 0,
     invoiceNo: j['invoiceNo'] as String?,
     month: j['month'] as String?,
     amount: _num(j['amount']),
@@ -409,6 +414,132 @@ class StudentFee {
     balance: _num(j['balance']),
     dueDate: _date(j['dueDate']),
     status: j['status'] as String? ?? '',
+  );
+}
+
+/// One payment against an invoice, as the list shows it before a receipt is
+/// opened. Receipts are per payment, not per invoice: a family paying in two
+/// instalments gets two, each showing what was handed over that day.
+class FeePayment {
+  const FeePayment({
+    required this.id,
+    required this.receiptNo,
+    required this.amount,
+    this.method,
+    this.reference,
+    this.paidDate,
+    required this.balanceAfter,
+  });
+
+  final int id;
+  final String receiptNo;
+  final double amount;
+  final String? method;
+  final String? reference;
+  final DateTime? paidDate;
+  final double balanceAfter;
+
+  factory FeePayment.fromJson(Map<String, dynamic> j) => FeePayment(
+    id: (j['id'] as num?)?.toInt() ?? 0,
+    receiptNo: j['receiptNo'] as String? ?? '',
+    amount: _num(j['amount']),
+    method: j['method'] as String?,
+    reference: j['reference'] as String?,
+    paidDate: _date(j['paidDate']),
+    balanceAfter: _num(j['balanceAfter']),
+  );
+}
+
+/// One head's share of what the invoice was raised for.
+class ReceiptLine {
+  const ReceiptLine({required this.description, required this.amount});
+
+  final String description;
+  final double amount;
+
+  factory ReceiptLine.fromJson(Map<String, dynamic> j) => ReceiptLine(
+    description: j['description'] as String? ?? '',
+    amount: _num(j['amount']),
+  );
+}
+
+/// Everything printed on a receipt. Mirrors FeeReceiptDto on the API, so the
+/// paper copy, the web copy and this one cannot disagree.
+class FeeReceipt {
+  const FeeReceipt({
+    required this.schoolName,
+    this.schoolAddress,
+    this.schoolPhone,
+    this.schoolEmail,
+    required this.receiptNo,
+    this.paidDate,
+    required this.issuedAt,
+    required this.studentName,
+    this.admissionNo,
+    this.classLabel,
+    this.invoiceNo,
+    this.month,
+    required this.lines,
+    required this.amountPaid,
+    required this.amountInWords,
+    this.method,
+    this.reference,
+    required this.invoiceTotal,
+    required this.paidToDate,
+    required this.balanceAfter,
+  });
+
+  final String schoolName;
+  final String? schoolAddress;
+  final String? schoolPhone;
+  final String? schoolEmail;
+  final String receiptNo;
+  final DateTime? paidDate;
+  final DateTime issuedAt;
+  final String studentName;
+  final String? admissionNo;
+  final String? classLabel;
+  final String? invoiceNo;
+  final String? month;
+  final List<ReceiptLine> lines;
+  final double amountPaid;
+  final String amountInWords;
+  final String? method;
+  final String? reference;
+  final double invoiceTotal;
+  final double paidToDate;
+  final double balanceAfter;
+
+  /// Methods are stored as slugs; a receipt should not read "bank_transfer".
+  String get methodLabel {
+    final String m = (method ?? '').replaceAll('_', ' ').trim();
+    if (m.isEmpty) return '—';
+    return m[0].toUpperCase() + m.substring(1);
+  }
+
+  factory FeeReceipt.fromJson(Map<String, dynamic> j) => FeeReceipt(
+    schoolName: j['schoolName'] as String? ?? '',
+    schoolAddress: j['schoolAddress'] as String?,
+    schoolPhone: j['schoolPhone'] as String?,
+    schoolEmail: j['schoolEmail'] as String?,
+    receiptNo: j['receiptNo'] as String? ?? '',
+    paidDate: _date(j['paidDate']),
+    issuedAt: _date(j['issuedAt']) ?? DateTime.now(),
+    studentName: j['studentName'] as String? ?? '',
+    admissionNo: j['admissionNo'] as String?,
+    classLabel: j['classLabel'] as String?,
+    invoiceNo: j['invoiceNo'] as String?,
+    month: j['month'] as String?,
+    lines: ((j['lines'] as List<dynamic>?) ?? const <dynamic>[])
+        .map((dynamic e) => ReceiptLine.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    amountPaid: _num(j['amountPaid']),
+    amountInWords: j['amountInWords'] as String? ?? '',
+    method: j['method'] as String?,
+    reference: j['reference'] as String?,
+    invoiceTotal: _num(j['invoiceTotal']),
+    paidToDate: _num(j['paidToDate']),
+    balanceAfter: _num(j['balanceAfter']),
   );
 }
 
