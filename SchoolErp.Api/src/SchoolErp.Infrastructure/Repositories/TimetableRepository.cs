@@ -34,16 +34,7 @@ public class TimetableRepository : ITimetableRepository
         const string sql = @"
             SELECT id, school_id, name, start_time, end_time, is_break, sort_order
             FROM timetable_periods WHERE school_id=@sid ORDER BY sort_order, start_time";
-        return await DbHelper.QueryAsync(conn, sql, r => new TimetablePeriod
-        {
-            Id = r.GetLong("id"),
-            SchoolId = r.GetLong("school_id"),
-            Name = r.GetString("name"),
-            StartTime = (TimeSpan)r.GetValue(r.GetOrdinal("start_time")),
-            EndTime = (TimeSpan)r.GetValue(r.GetOrdinal("end_time")),
-            IsBreak = r.GetBool("is_break"),
-            SortOrder = r.GetInt("sort_order"),
-        }, ct, ("@sid", schoolId));
+        return await DbHelper.QueryAsync(conn, sql, MapPeriod, ct, ("@sid", schoolId));
     }
 
     /// <summary>Mirrors migration 011 for a school created after it ran.</summary>
@@ -64,6 +55,133 @@ public class TimetableRepository : ITimetableRepository
             ) p
             WHERE NOT EXISTS (SELECT 1 FROM timetable_periods tp WHERE tp.school_id = @sid)";
         await DbHelper.ExecuteAsync(conn, sql, ct, ("@sid", schoolId));
+    }
+
+    // ------------------------------------------------------------------ periods
+
+    public async Task<TimetablePeriod?> GetPeriodAsync(long schoolId, long id, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        const string sql = @"
+            SELECT id, school_id, name, start_time, end_time, is_break, sort_order
+            FROM timetable_periods WHERE school_id=@sid AND id=@id";
+        return await DbHelper.QuerySingleAsync(conn, sql, MapPeriod, ct, ("@sid", schoolId), ("@id", id));
+    }
+
+    public async Task<long> InsertPeriodAsync(TimetablePeriod p, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        const string sql = @"
+            INSERT INTO timetable_periods (school_id, name, start_time, end_time, is_break, sort_order)
+            VALUES (@sid, @name, @start, @end, @brk, @sort)";
+        return await DbHelper.InsertAsync(conn, sql, ct,
+            ("@sid", p.SchoolId), ("@name", p.Name), ("@start", p.StartTime), ("@end", p.EndTime),
+            ("@brk", p.IsBreak), ("@sort", p.SortOrder));
+    }
+
+    public async Task UpdatePeriodAsync(TimetablePeriod p, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        const string sql = @"
+            UPDATE timetable_periods
+            SET name=@name, start_time=@start, end_time=@end, is_break=@brk
+            WHERE school_id=@sid AND id=@id";
+        await DbHelper.ExecuteAsync(conn, sql, ct,
+            ("@name", p.Name), ("@start", p.StartTime), ("@end", p.EndTime), ("@brk", p.IsBreak),
+            ("@sid", p.SchoolId), ("@id", p.Id));
+    }
+
+    public async Task DeletePeriodAsync(long schoolId, long id, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        await DbHelper.ExecuteAsync(conn,
+            "DELETE FROM timetable_periods WHERE school_id=@sid AND id=@id", ct,
+            ("@sid", schoolId), ("@id", id));
+    }
+
+    public async Task SetPeriodSortOrderAsync(long schoolId, long id, int sortOrder, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        await DbHelper.ExecuteAsync(conn,
+            "UPDATE timetable_periods SET sort_order=@sort WHERE school_id=@sid AND id=@id", ct,
+            ("@sort", sortOrder), ("@sid", schoolId), ("@id", id));
+    }
+
+    // ------------------------------------------------- renumbering slots
+    //
+    // uq_tt_cell makes (school, class, section, day, period_no) unique, so a bulk shift has to
+    // move rows in the direction that never lands on a position still occupied — hence the
+    // ORDER BY on each UPDATE.
+
+    public async Task<int> CountSlotsAtPeriodAsync(long schoolId, int periodNo, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        return (int)await DbHelper.ScalarLongAsync(conn,
+            "SELECT COUNT(*) FROM timetable_slot WHERE school_id=@sid AND period_no=@no", ct,
+            ("@sid", schoolId), ("@no", periodNo));
+    }
+
+    public async Task OpenSlotGapAsync(long schoolId, int at, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        await DbHelper.ExecuteAsync(conn, @"
+            UPDATE timetable_slot SET period_no = period_no + 1
+            WHERE school_id=@sid AND period_no >= @at
+            ORDER BY period_no DESC", ct,
+            ("@sid", schoolId), ("@at", at));
+    }
+
+    public async Task CloseSlotGapAsync(long schoolId, int at, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        await DbHelper.ExecuteAsync(conn, @"
+            UPDATE timetable_slot SET period_no = period_no - 1
+            WHERE school_id=@sid AND period_no > @at
+            ORDER BY period_no ASC", ct,
+            ("@sid", schoolId), ("@at", at));
+    }
+
+    /// <summary>
+    /// The moving period's cells are parked well past the end of any school day first, so the
+    /// slide underneath them cannot collide with the position they came from.
+    /// </summary>
+    public async Task MoveSlotPeriodAsync(long schoolId, int from, int to, CancellationToken ct = default)
+    {
+        if (from == to) return;
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+
+        await DbHelper.ExecuteAsync(conn,
+            "UPDATE timetable_slot SET period_no=@park WHERE school_id=@sid AND period_no=@from", ct,
+            ("@park", ParkedPeriodNo), ("@sid", schoolId), ("@from", from));
+
+        if (from < to)
+        {
+            await DbHelper.ExecuteAsync(conn, @"
+                UPDATE timetable_slot SET period_no = period_no - 1
+                WHERE school_id=@sid AND period_no > @from AND period_no <= @to
+                ORDER BY period_no ASC", ct,
+                ("@sid", schoolId), ("@from", from), ("@to", to));
+        }
+        else
+        {
+            await DbHelper.ExecuteAsync(conn, @"
+                UPDATE timetable_slot SET period_no = period_no + 1
+                WHERE school_id=@sid AND period_no >= @to AND period_no < @from
+                ORDER BY period_no DESC", ct,
+                ("@sid", schoolId), ("@from", from), ("@to", to));
+        }
+
+        await DbHelper.ExecuteAsync(conn,
+            "UPDATE timetable_slot SET period_no=@to WHERE school_id=@sid AND period_no=@park", ct,
+            ("@to", to), ("@sid", schoolId), ("@park", ParkedPeriodNo));
+    }
+
+    public async Task SetSlotTimeLabelAsync(long schoolId, int periodNo, string timeLabel, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        await DbHelper.ExecuteAsync(conn,
+            "UPDATE timetable_slot SET time_label=@label WHERE school_id=@sid AND period_no=@no", ct,
+            ("@label", timeLabel), ("@sid", schoolId), ("@no", periodNo));
     }
 
     public async Task<IReadOnlyList<TimetableSlot>> GetForSectionAsync(long schoolId, string className,
@@ -107,6 +225,17 @@ public class TimetableRepository : ITimetableRepository
               AND day_of_week=@day AND period_no=@period", ct,
             ("@sid", schoolId), ("@cls", className), ("@sec", sectionName),
             ("@day", day), ("@period", period));
+    }
+
+    public async Task<int> ClearSlotsAsync(long schoolId, int? dayOfWeek, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        // One statement either way: @day is NULL for a whole-week reset, and the OR short-circuits
+        // to "every day" rather than the query needing a second shape.
+        return await DbHelper.ExecuteAsync(conn, @"
+            DELETE FROM timetable_slot
+            WHERE school_id=@sid AND (@day IS NULL OR day_of_week=@day)", ct,
+            ("@sid", schoolId), ("@day", (object?)dayOfWeek));
     }
 
     public async Task<int> CountSlotsOnDayAsync(long schoolId, int dayOfWeek, CancellationToken ct = default)
@@ -167,6 +296,20 @@ public class TimetableRepository : ITimetableRepository
             ("@sid", schoolId), ("@room", room), ("@day", day), ("@period", period),
             ("@cls", className), ("@sec", sectionName));
     }
+
+    /// <summary>Past any real period position, so a move can park rows there without clashing.</summary>
+    private const int ParkedPeriodNo = 1000;
+
+    private static TimetablePeriod MapPeriod(IDataRecord r) => new()
+    {
+        Id = r.GetLong("id"),
+        SchoolId = r.GetLong("school_id"),
+        Name = r.GetString("name"),
+        StartTime = (TimeSpan)r.GetValue(r.GetOrdinal("start_time")),
+        EndTime = (TimeSpan)r.GetValue(r.GetOrdinal("end_time")),
+        IsBreak = r.GetBool("is_break"),
+        SortOrder = r.GetInt("sort_order"),
+    };
 
     private static TimetableSlot Map(IDataRecord r) => new()
     {

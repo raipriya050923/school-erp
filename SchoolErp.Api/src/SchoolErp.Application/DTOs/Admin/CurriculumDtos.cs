@@ -20,6 +20,12 @@ public record ClassCurriculumDto(
     IReadOnlyList<ClassSubjectOptionDto> Subjects,
     IReadOnlyList<AssignmentRowDto> Grid);
 
+/// <summary>
+/// One class and the subjects it studies this year, by name. Exams address classes by label
+/// rather than by id, so the names are what the exam screens need to match against.
+/// </summary>
+public record ClassSubjectsDto(long ClassId, string ClassName, IReadOnlyList<string> Subjects);
+
 public class SetClassSubjectsDto
 {
     public IReadOnlyList<long> SubjectIds { get; set; } = Array.Empty<long>();

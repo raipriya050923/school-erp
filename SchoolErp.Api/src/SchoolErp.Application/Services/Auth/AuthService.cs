@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SchoolErp.Application.Common;
 using SchoolErp.Application.DTOs.Auth;
 using SchoolErp.Application.Interfaces.Persistence;
@@ -12,18 +13,30 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _hasher;
     private readonly INotificationSender _notifier;
     private readonly ITokenService _tokens;
+    private readonly ISubscriptionGuard _entitlements;
     private readonly ISchoolRepository _schools;
-    private readonly ISubscriptionRepository _subscriptions;
+    private readonly AccountOptions _options;
+    private readonly ILogger<AuthService> _logger;
+
+    /// <summary>
+    /// How long a reset link stays good for. One hour is long enough to find the mail and short
+    /// enough that a forwarded or archived message stops being a key. The email quotes this
+    /// value rather than repeating the number, so the two cannot disagree.
+    /// </summary>
+    private static readonly TimeSpan ResetTokenLifetime = TimeSpan.FromHours(1);
 
     public AuthService(IUserRepository users, IPasswordHasher hasher, INotificationSender notifier,
-        ITokenService tokens, ISchoolRepository schools, ISubscriptionRepository subscriptions)
+        ITokenService tokens, ISubscriptionGuard entitlements, ISchoolRepository schools,
+        AccountOptions options, ILogger<AuthService> logger)
     {
         _users = users;
         _hasher = hasher;
         _notifier = notifier;
         _tokens = tokens;
+        _entitlements = entitlements;
         _schools = schools;
-        _subscriptions = subscriptions;
+        _options = options;
+        _logger = logger;
     }
 
     public async Task<AuthUserDto> LoginAsync(LoginDto dto, CancellationToken ct = default)
@@ -45,12 +58,31 @@ public class AuthService : IAuthService
         // The portals key off staff/student rows rather than the login itself, so resolve those
         // once here and carry them in the token instead of looking them up on every request.
         var staffId = user.UserType is "teacher" or "staff" ? await _users.GetStaffIdAsync(user.Id, ct) : null;
-        var studentId = user.UserType == "student" ? await _users.GetStudentIdAsync(user.Id, ct) : null;
+        // A parent carries their child's student id, so the whole student portal
+        // works for them unchanged — every one of its queries is scoped by this
+        // claim rather than by the user, so there is nothing role-specific to
+        // duplicate. A parent whose account is not linked to a child is refused
+        // here rather than being let in to a portal that would 403 on every screen.
+        var studentId = user.UserType switch
+        {
+            "student" => await _users.GetStudentIdAsync(user.Id, ct),
+            "parent" => await _users.GetChildStudentIdAsync(user.Id, ct)
+                        ?? throw new ValidationException(
+                            "This parent account is not linked to a student. Contact your school office."),
+            _ => null,
+        };
 
         var (token, expiresAt) = _tokens.Issue(
-            new TokenIdentity(user.Id, user.SchoolId, user.UserType, user.Username, staffId, studentId));
+            new TokenIdentity(user.Id, user.SchoolId, user.UserType, user.Username, staffId, studentId,
+                user.MustChangePassword));
 
-        return ToAuthUser(user, token, expiresAt);
+        // Every portal of a school renders in that school's colours, so the palette travels with
+        // the session rather than being fetched separately on each shell load.
+        var theme = user.SchoolId is { } sid
+            ? (await _schools.GetByIdAsync(sid, ct))?.Theme ?? "classic"
+            : "classic";
+
+        return ToAuthUser(user, token, expiresAt, theme);
     }
 
     public async Task ChangePasswordAsync(ChangePasswordDto dto, CancellationToken ct = default)
@@ -60,24 +92,81 @@ public class AuthService : IAuthService
         if (!_hasher.Verify(dto.CurrentPassword, user.PasswordHash))
             throw new ValidationException("Current password is incorrect.");
         ValidateNewPassword(dto.NewPassword);
-        await _users.UpdatePasswordAsync(user.Id, _hasher.Hash(dto.NewPassword), ct);
+        // Reusing the issued password would leave the account exactly as exposed as before.
+        if (_hasher.Verify(dto.NewPassword, user.PasswordHash))
+            throw new ValidationException("The new password must be different from the current one.");
+        // mustChange: false — the holder chose this one, so the flag clears.
+        await _users.UpdatePasswordAsync(user.Id, _hasher.Hash(dto.NewPassword), false, ct);
     }
 
     public async Task<ForgotPasswordResultDto> ForgotPasswordAsync(ForgotPasswordDto dto, CancellationToken ct = default)
     {
+        // One reply for every outcome — address unknown, mail server down, link sent. Anything
+        // that varies turns this endpoint into a way to ask which addresses hold an account.
+        var reply = new ForgotPasswordResultDto("If that email exists, a reset link has been sent.");
+
         var email = dto.Email.Trim();
+        if (string.IsNullOrWhiteSpace(email)) return reply;
+
         var user = await _users.GetByEmailAsync(email, ct);
-        // Always respond the same way so we don't leak which emails exist.
         if (user is null)
-            return new ForgotPasswordResultDto("If that email exists, a reset link has been sent.", null);
+        {
+            _logger.LogInformation("Password reset asked for {Email}, which matches no account", email);
+            return reply;
+        }
 
         var token = Guid.NewGuid().ToString("N");
-        await _users.CreateResetTokenAsync(user.Id, token, DateTime.UtcNow.AddHours(1), ct);
-        await _notifier.SendEmailAsync(email, "Password reset",
-            $"Use this token to reset your password (valid 1 hour): {token}", ct);
+        await _users.CreateResetTokenAsync(user.Id, token, DateTime.UtcNow.Add(ResetTokenLifetime), ct);
 
-        // DemoToken is returned so the flow is testable without a real inbox — remove in production.
-        return new ForgotPasswordResultDto("If that email exists, a reset link has been sent.", token);
+        var schoolName = user.SchoolId is { } sid
+            ? (await _schools.GetByIdAsync(sid, ct))?.Name ?? string.Empty
+            : string.Empty;
+        var link = BuildResetLink(token);
+
+        try
+        {
+            await _notifier.SendEmailAsync(
+                email,
+                PasswordResetEmail.Subject(schoolName),
+                PasswordResetEmail.HtmlBody(user.FullName, schoolName, link, ResetTokenLifetime),
+                PasswordResetEmail.PlainBody(user.FullName, schoolName, link, ResetTokenLifetime),
+                ct);
+
+            _logger.LogInformation("Password reset link sent to {Email}", email);
+        }
+        catch (Exception ex)
+        {
+            // Swallowed on purpose. Letting it out would turn a mail outage into a 500 that only
+            // ever fires for addresses that DO exist — the very thing the single reply above is
+            // there to hide. The token stays valid; the person can ask again once mail is back.
+            _logger.LogError(ex, "Password reset link for {Email} could not be sent", email);
+        }
+
+        return reply;
+    }
+
+    /// <summary>
+    /// The reset page with the token on the query string. Falls back to deriving the page from
+    /// PortalUrl (".../login" -> ".../reset-password") so an environment that configured only
+    /// the sign-in link still sends somewhere real.
+    /// </summary>
+    private string BuildResetLink(string token)
+    {
+        var baseUrl = _options.ResetPasswordUrl;
+
+        if (string.IsNullOrWhiteSpace(baseUrl) && !string.IsNullOrWhiteSpace(_options.PortalUrl))
+        {
+            var portal = _options.PortalUrl!.Trim();
+            var cut = portal.LastIndexOf('/');
+            baseUrl = cut > "https://".Length ? portal[..cut] + "/reset-password" : portal;
+        }
+
+        // Nothing configured at all: a relative path is still something the reader can paste
+        // behind their own host, and it beats emitting "?token=..." on its own.
+        baseUrl = string.IsNullOrWhiteSpace(baseUrl) ? "/reset-password" : baseUrl!.Trim();
+
+        var separator = baseUrl.Contains('?') ? '&' : '?';
+        return $"{baseUrl}{separator}token={Uri.EscapeDataString(token)}";
     }
 
     public async Task ResetPasswordAsync(ResetPasswordDto dto, CancellationToken ct = default)
@@ -90,7 +179,9 @@ public class AuthService : IAuthService
             throw new ValidationException("This reset token has expired or already been used.");
 
         ValidateNewPassword(dto.NewPassword);
-        await _users.UpdatePasswordAsync(row.userId, _hasher.Hash(dto.NewPassword), ct);
+        // The holder proved control of their own mailbox and chose this password, so it counts
+        // as theirs and the flag clears.
+        await _users.UpdatePasswordAsync(row.userId, _hasher.Hash(dto.NewPassword), false, ct);
         await _users.MarkResetTokenUsedAsync(dto.Token.Trim(), ct);
     }
 
@@ -99,22 +190,14 @@ public class AuthService : IAuthService
     /// never on <c>end_date</c>: nothing advances a lapsed subscription to 'expired' yet, so
     /// dating the check would lock out every school whose seeded period has simply run out.
     /// </summary>
-    private async Task EnsureTenantIsUsableAsync(long schoolId, CancellationToken ct)
-    {
-        var school = await _schools.GetByIdAsync(schoolId, ct);
-        if (school is null)
-            throw new ValidationException("This school no longer exists. Contact support.");
-        if (school.Status is "suspended")
-            throw new ValidationException("This school is suspended. Contact your platform administrator.");
-        if (school.Status is "terminated")
-            throw new ValidationException("This school's account has been closed. Contact your platform administrator.");
-
-        // A school that never had a subscription is left alone — blocking it would strand tenants
-        // onboarded before plans were required.
-        var sub = await _subscriptions.GetLatestBySchoolAsync(schoolId, ct);
-        if (sub?.Status is "expired" or "cancelled")
-            throw new ValidationException("This school's subscription has ended. Contact your platform administrator.");
-    }
+    /// <summary>
+    /// School status and subscription both gate the login. This used to test the
+    /// stored subscription status alone, which never changes on its own — so a
+    /// trial that ran out months ago still read "trial" and its users kept
+    /// signing in. The guard decides from the end date instead.
+    /// </summary>
+    private Task EnsureTenantIsUsableAsync(long schoolId, CancellationToken ct)
+        => _entitlements.EnsureUsableAsync(schoolId, ct);
 
     private static void ValidateNewPassword(string pw)
     {
@@ -122,11 +205,11 @@ public class AuthService : IAuthService
             throw new ValidationException("New password must be at least 6 characters.");
     }
 
-    private static AuthUserDto ToAuthUser(User u, string token, DateTime expiresAt)
+    private static AuthUserDto ToAuthUser(User u, string token, DateTime expiresAt, string theme)
     {
         var (role, portal, title) = MapRole(u);
         return new AuthUserDto(u.Id, u.SchoolId, u.UserType, role, u.Username, u.Email, u.FullName,
-            portal, title, token, expiresAt);
+            portal, title, token, expiresAt, theme, u.MustChangePassword);
     }
 
     private static (string role, string portal, string title) MapRole(User u) => u.UserType switch
@@ -135,6 +218,7 @@ public class AuthService : IAuthService
         "school_admin" => ("school_admin", "/admin", "Administrator"),
         "teacher" => ("teacher", "/teacher", "Teacher"),
         "student" => ("student", "/student", "Student"),
+        "parent" => ("parent", "/parent", "Parent"),
         _ => (u.UserType, "/login", u.UserType),
     };
 }

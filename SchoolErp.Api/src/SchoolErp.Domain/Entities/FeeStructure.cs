@@ -13,6 +13,12 @@ public class FeeHead
     public string? Description { get; set; }
     /// <summary>one_time | monthly | quarterly | half_yearly | yearly.</summary>
     public string Frequency { get; set; } = "monthly";
+    /// <summary>
+    /// Where the amount comes from: <c>class</c> reads the class price grid, <c>distance</c>
+    /// reads the student's own distance and the school's band scale. A head cannot be both — the
+    /// two would have to be added together, and no school bills transport twice.
+    /// </summary>
+    public string PricingMode { get; set; } = "class";
     public bool IsRefundable { get; set; }
     public bool IsActive { get; set; } = true;
 }
@@ -35,6 +41,18 @@ public class FeeStructureCell
     public decimal Amount { get; set; }
 }
 
+/// <summary>
+/// One payment against an invoice, with enough of the invoice and the student alongside it to
+/// print a receipt without three more round trips.
+/// <paramref name="PaidToDate"/> counts this payment and every earlier one on the same invoice,
+/// so a reprint of an old receipt still shows what was outstanding at that point.
+/// </summary>
+public record FeePaymentRow(
+    long Id, long InvoiceId, long SchoolId, decimal Amount, string? Method, string? Reference,
+    DateTime? PaidDate, DateTime CreatedAt,
+    string? InvoiceNo, string? Month, decimal InvoiceTotal, decimal PaidToDate,
+    long StudentId, string? StudentName, string? AdmissionNo, string? ClassLabel);
+
 /// <summary>One head's contribution to an invoice, kept so the total can be explained later.</summary>
 public class FeeInvoiceLine
 {
@@ -50,4 +68,21 @@ public class FeeInvoiceLine
 /// because the fee structure has no amounts for them — silently generating nothing is the one
 /// behaviour that would leave an admin unable to tell what went wrong.
 /// </summary>
-public record FeeGenerationResult(int Created, int AlreadyBilled, IReadOnlyList<string> UnpricedClasses);
+/// <param name="TransportSkipped">
+/// Riders whose transport could not be priced — no distance recorded, or a distance past the last
+/// band. Reported apart from <see cref="FeeGenerationResult.UnpricedClasses"/> because the fix is
+/// different: these students were invoiced, just without their bus.
+/// </param>
+/// <param name="RepeatChargesSkipped">
+/// How many one-time or yearly charges were left off because that student had already been
+/// billed for them. Reported so that ticking the box and seeing no change reads as the rule
+/// working, rather than as the run having quietly failed.
+/// </param>
+/// <param name="ToppedUp">
+/// Invoices that already existed for the month and gained the yearly or one-time charges they
+/// were missing. Counted apart from <see cref="FeeGenerationResult.Created"/>: nothing new was
+/// raised, an existing bill grew.
+/// </param>
+public record FeeGenerationResult(
+    int Created, int AlreadyBilled, IReadOnlyList<string> UnpricedClasses,
+    IReadOnlyList<string> TransportSkipped, int RepeatChargesSkipped, int ToppedUp);

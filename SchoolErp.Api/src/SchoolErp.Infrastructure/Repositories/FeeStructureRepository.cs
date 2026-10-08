@@ -10,16 +10,17 @@ public class FeeStructureRepository : IFeeStructureRepository
     private readonly IDbConnectionFactory _factory;
     public FeeStructureRepository(IDbConnectionFactory factory) => _factory = factory;
 
-    private const string HeadCols = "id, school_id, name, description, frequency, is_refundable, is_active";
+    private const string HeadCols = "id, school_id, name, description, frequency, pricing_mode, is_refundable, is_active";
 
     /// <summary>The set every new school starts with; mirrors migration 013.</summary>
-    private static readonly (string Name, string Description, string Frequency)[] DefaultHeads =
+    private static readonly (string Name, string Description, string Frequency, string PricingMode)[] DefaultHeads =
     {
-        ("Tuition Fee", "Core monthly teaching fee", "monthly"),
-        ("Transport Fee", "Bus service, billed monthly", "monthly"),
-        ("Exam Fee", "Charged once per academic year", "yearly"),
-        ("Library Fee", "Charged once per academic year", "yearly"),
-        ("Admission Fee", "Charged once, on admission", "one_time"),
+        ("Tuition Fee", "Core monthly teaching fee", "monthly", "class"),
+        // Priced from the rider's distance, not from their class — see migration 022.
+        ("Transport Fee", "Bus service, billed by distance", "monthly", "distance"),
+        ("Exam Fee", "Charged once per academic year", "yearly", "class"),
+        ("Library Fee", "Charged once per academic year", "yearly", "class"),
+        ("Admission Fee", "Charged once, on admission", "one_time", "class"),
     };
 
     /* ============================ heads ============================ */
@@ -53,19 +54,21 @@ public class FeeStructureRepository : IFeeStructureRepository
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
         return await DbHelper.InsertAsync(conn,
-            @"INSERT INTO fee_types (school_id, name, description, frequency, is_refundable, is_active)
-              VALUES (@sid, @name, @descr, @freq, @ref, @active)", ct,
+            @"INSERT INTO fee_types (school_id, name, description, frequency, pricing_mode, is_refundable, is_active)
+              VALUES (@sid, @name, @descr, @freq, @mode, @ref, @active)", ct,
             ("@sid", h.SchoolId), ("@name", h.Name), ("@descr", h.Description),
-            ("@freq", h.Frequency), ("@ref", h.IsRefundable), ("@active", h.IsActive));
+            ("@freq", h.Frequency), ("@mode", h.PricingMode), ("@ref", h.IsRefundable), ("@active", h.IsActive));
     }
 
     public async Task UpdateHeadAsync(FeeHead h, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
         await DbHelper.ExecuteAsync(conn,
-            @"UPDATE fee_types SET name=@name, description=@descr, frequency=@freq, is_refundable=@ref
+            @"UPDATE fee_types SET name=@name, description=@descr, frequency=@freq,
+                     pricing_mode=@mode, is_refundable=@ref
               WHERE id=@id AND school_id=@sid", ct,
-            ("@name", h.Name), ("@descr", h.Description), ("@freq", h.Frequency), ("@ref", h.IsRefundable),
+            ("@name", h.Name), ("@descr", h.Description), ("@freq", h.Frequency),
+            ("@mode", h.PricingMode), ("@ref", h.IsRefundable),
             ("@id", h.Id), ("@sid", h.SchoolId));
 
         // Cells carry a copy of the frequency so the invoice run reads one table; keep them in step.
@@ -85,13 +88,13 @@ public class FeeStructureRepository : IFeeStructureRepository
     public async Task SeedDefaultHeadsAsync(long schoolId, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
-        foreach (var (name, descr, freq) in DefaultHeads)
+        foreach (var (name, descr, freq, mode) in DefaultHeads)
         {
             // uq_ft (school_id, name) makes this idempotent.
             await DbHelper.ExecuteAsync(conn,
-                @"INSERT IGNORE INTO fee_types (school_id, name, description, frequency, is_refundable, is_active)
-                  VALUES (@sid, @name, @descr, @freq, 0, 1)", ct,
-                ("@sid", schoolId), ("@name", name), ("@descr", descr), ("@freq", freq));
+                @"INSERT IGNORE INTO fee_types (school_id, name, description, frequency, pricing_mode, is_refundable, is_active)
+                  VALUES (@sid, @name, @descr, @freq, @mode, 0, 1)", ct,
+                ("@sid", schoolId), ("@name", name), ("@descr", descr), ("@freq", freq), ("@mode", mode));
         }
     }
 
@@ -157,6 +160,7 @@ public class FeeStructureRepository : IFeeStructureRepository
         Name = r.GetString("name"),
         Description = r.GetStringOrNull("description"),
         Frequency = r.GetString("frequency"),
+        PricingMode = r.GetString("pricing_mode"),
         IsRefundable = r.GetBool("is_refundable"),
         IsActive = r.GetBool("is_active"),
     };

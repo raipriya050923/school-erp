@@ -42,6 +42,17 @@ public class NotificationRepository : INotificationRepository
             "UPDATE notifications SET read_at=NOW() WHERE user_id=@uid AND read_at IS NULL", ct, ("@uid", userId));
     }
 
+    public async Task AddForUserAsync(long userId, long? schoolId, Notification n, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        const string sql = @"
+            INSERT INTO notifications (school_id, user_id, title, body, type, ref_table, ref_id, created_at)
+            VALUES (@sid, @uid, @title, @body, @type, @reftable, @refid, NOW())";
+        await DbHelper.ExecuteAsync(conn, sql, ct,
+            ("@sid", (object?)schoolId), ("@uid", userId), ("@title", n.Title), ("@body", n.Body),
+            ("@type", n.Type), ("@reftable", n.RefTable), ("@refid", n.RefId));
+    }
+
     /// <summary>
     /// One INSERT…SELECT rather than a round-trip per recipient: a school can have several admins
     /// and the platform several super admins. A null <paramref name="schoolId"/> targets platform

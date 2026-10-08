@@ -13,13 +13,19 @@ import {
 } from './student-api.pages';
 import { ProfilePageComponent } from '../../shared/profile.page';
 
-export const STUDENT_ROUTES: Routes = [
+/**
+ * The screens both portals show. A parent reads exactly what their child does —
+ * the API scopes every student endpoint by the student_id on the token, so the
+ * parent build differs only in the guard and the label above the nav.
+ */
+function portalRoutes(role: 'student' | 'parent', portal: string): Routes {
+  return [
   {
     path: '',
     component: PortalLayoutComponent,
-    canActivate: [roleGuard('student')],
+    canActivate: [roleGuard(role)],
     data: {
-      portal: 'Student',
+      portal,
       nav: [
         { label: 'Dashboard', path: 'dashboard', icon: 'grid' },
         { label: 'Attendance', path: 'attendance', icon: 'clipboard' },
@@ -42,4 +48,8 @@ export const STUDENT_ROUTES: Routes = [
       { path: 'notices', component: StNoticesComponent },
     ],
   },
-];
+  ];
+}
+
+export const STUDENT_ROUTES: Routes = portalRoutes('student', 'Student');
+export const PARENT_ROUTES: Routes = portalRoutes('parent', 'Parent');

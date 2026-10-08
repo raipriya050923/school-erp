@@ -122,6 +122,7 @@ class StatTile extends StatelessWidget {
     required this.color,
     this.caption,
     this.onTap,
+    this.tint,
   });
 
   final String label;
@@ -131,11 +132,20 @@ class StatTile extends StatelessWidget {
   final String? caption;
   final VoidCallback? onTap;
 
+  /// Position in the pastel cycle, matching the web dashboard's stat cards,
+  /// which fill through --tile-1..4 by position rather than by meaning. Null
+  /// leaves the tile on the plain surface. Only applied in the light theme:
+  /// these pastels are mixed for a white page and turn muddy on a dark one.
+  final int? tint;
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool tinted = tint != null && theme.brightness == Brightness.light;
     return AppCard(
       onTap: onTap,
+      color: tinted ? AppColors.tileFill(tint!) : null,
+      borderColor: tinted ? AppColors.tileBorder(tint!) : null,
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -426,8 +436,9 @@ class InfoRow extends StatelessWidget {
   }
 }
 
-/// Convenience: a snackbar for the many "static demo" actions.
-void showDemoSnack(BuildContext context, String message) {
+/// A brief snackbar. Used where an action has no API behind it yet and the
+/// honest answer is to say so rather than fake a result.
+void showSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(

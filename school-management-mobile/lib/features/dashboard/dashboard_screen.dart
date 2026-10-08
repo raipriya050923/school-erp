@@ -59,7 +59,7 @@ class _DashboardBody extends StatelessWidget {
   const _DashboardBody({required this.data, required this.timetable});
 
   final StudentDashboard data;
-  final List<TimetableSlot>? timetable;
+  final StudentTimetable? timetable;
 
   /// `day_of_week` is 1 = Sunday … 7 = Saturday.
   int get _today => DateTime.now().weekday % 7 + 1;
@@ -68,7 +68,7 @@ class _DashboardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final List<TimetableSlot> todays =
-        (timetable ?? <TimetableSlot>[])
+        (timetable?.slots ?? <TimetableSlot>[])
             .where((TimetableSlot s) => s.dayOfWeek == _today)
             .toList()
           ..sort((TimetableSlot a, TimetableSlot b) =>
@@ -117,6 +117,7 @@ class _DashboardBody extends StatelessWidget {
             Expanded(
               child: StatTile(
                 label: 'Attendance',
+                tint: 0,
                 value: '${data.attendancePercent}%',
                 caption: '${data.presentDays}/${data.totalDays} days',
                 icon: Icons.fact_check_outlined,
@@ -130,6 +131,7 @@ class _DashboardBody extends StatelessWidget {
             Expanded(
               child: StatTile(
                 label: 'Fees due',
+                tint: 1,
                 value: _money(data.feeDue),
                 caption: data.feeDue > 0 ? 'Outstanding' : 'All settled',
                 icon: Icons.account_balance_wallet_outlined,
@@ -146,6 +148,7 @@ class _DashboardBody extends StatelessWidget {
             Expanded(
               child: StatTile(
                 label: 'Homework',
+                tint: 2,
                 value: '${data.pendingHomework}',
                 caption: data.pendingHomework == 1 ? 'Pending task' : 'Pending tasks',
                 icon: Icons.assignment_outlined,
@@ -158,6 +161,7 @@ class _DashboardBody extends StatelessWidget {
             Expanded(
               child: StatTile(
                 label: 'Next exam',
+                tint: 3,
                 value: data.nextExamName ?? '—',
                 caption: data.nextExamDate != null
                     ? _formatDate(data.nextExamDate!)
@@ -319,7 +323,10 @@ class NotificationBell extends StatelessWidget {
 }
 
 Color _attendanceColour(int percent) {
-  if (percent >= 90) return AppColors.primary600;
+  // Green is the web's --good. The top band used to be the emerald brand and
+  // the next one blue; now that the brand IS blue, the top band has to move to
+  // green or the two best scores render identically.
+  if (percent >= 90) return AppColors.green;
   if (percent >= 75) return AppColors.blue;
   if (percent >= 60) return AppColors.amber;
   return AppColors.red;

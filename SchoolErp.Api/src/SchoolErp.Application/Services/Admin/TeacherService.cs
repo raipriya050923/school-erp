@@ -40,10 +40,18 @@ public class TeacherService : ITeacherService
     {
         var rows = await _repo.GetAllAsync(_school.SchoolId, search, ct);
         var classTeacherOf = await _repo.GetClassTeacherSectionsAsync(_school.SchoolId, ct);
-        return rows.Select(t => new TeacherListItemDto(
-            t.Id, t.EmployeeCode, $"{t.FirstName} {t.LastName}".Trim(), t.Specialization,
-            t.Phone, t.Email, t.Status, t.JoiningDate,
-            classTeacherOf.TryGetValue(t.Id, out var label) ? label : null)).ToList();
+        var subjects = await _repo.GetSubjectsForAllAsync(_school.SchoolId, ct);
+        return rows.Select(t =>
+        {
+            var mine = subjects.TryGetValue(t.Id, out var list) ? list : Array.Empty<string>();
+            return new TeacherListItemDto(
+                t.Id, t.EmployeeCode, $"{t.FirstName} {t.LastName}".Trim(),
+                // Falls back to the stored summary for a teacher who predates the subject list.
+                mine.Count > 0 ? string.Join(", ", mine) : t.Specialization,
+                t.Phone, t.Email, t.Status, t.JoiningDate,
+                classTeacherOf.TryGetValue(t.Id, out var label) ? label : null,
+                mine);
+        }).ToList();
     }
 
     public async Task<TeacherDetailDto?> GetAsync(long id, CancellationToken ct = default)
@@ -51,11 +59,14 @@ public class TeacherService : ITeacherService
         var t = await _repo.GetByIdAsync(_school.SchoolId, id, ct);
         if (t is null) return null;
         var qualifications = await _repo.GetQualificationsAsync(_school.SchoolId, id, ct);
+        var subjects = await _repo.GetSubjectsAsync(_school.SchoolId, id, ct);
         return new TeacherDetailDto(t.Id, t.EmployeeCode, $"{t.FirstName} {t.LastName}".Trim(),
-            t.FirstName, t.LastName, t.Specialization, t.Phone, t.Email,
+            t.FirstName, t.LastName,
+            subjects.Count > 0 ? string.Join(", ", subjects) : t.Specialization, t.Phone, t.Email,
             t.Qualification, t.Gender, t.Dob, t.Address, t.City, t.State, t.Pincode, t.JoiningDate, t.Status,
             t.StateId, t.CityId,
-            qualifications.Select(q => new QualificationDto(q.Name, q.Institution, q.CompletionYear)).ToList());
+            qualifications.Select(q => new QualificationDto(q.Name, q.Institution, q.CompletionYear)).ToList(),
+            subjects);
     }
 
     public async Task<CreateTeacherResultDto> CreateAsync(SaveTeacherDto dto, CancellationToken ct = default)
@@ -76,6 +87,7 @@ public class TeacherService : ITeacherService
         // actually lets the new account reach its own classes.
         await _repo.SetUserIdAsync(_school.SchoolId, id, credentials.UserId, ct);
         await _repo.ReplaceQualificationsAsync(_school.SchoolId, id, Qualifications(dto), ct);
+        await _repo.ReplaceSubjectsAsync(_school.SchoolId, id, Subjects(dto), ct);
 
         return new CreateTeacherResultDto(id, t.EmployeeCode, credentials);
     }
@@ -89,6 +101,7 @@ public class TeacherService : ITeacherService
         await ApplyPlaceAsync(t, dto, ct);
         await _repo.UpdateAsync(t, ct);
         await _repo.ReplaceQualificationsAsync(_school.SchoolId, id, Qualifications(dto), ct);
+        await _repo.ReplaceSubjectsAsync(_school.SchoolId, id, Subjects(dto), ct);
     }
 
     public async Task SetStatusAsync(long id, string status, CancellationToken ct = default)
@@ -97,6 +110,22 @@ public class TeacherService : ITeacherService
         _ = await _repo.GetByIdAsync(_school.SchoolId, id, ct)
             ?? throw new NotFoundException($"Teacher {id} not found.");
         await _repo.SetStatusAsync(_school.SchoolId, id, status, ct);
+    }
+
+    /// <summary>
+    /// The subjects this teacher can take, falling back to the legacy single field so an older
+    /// client that still posts `subject` alone keeps working.
+    /// </summary>
+    private static IReadOnlyList<string> Subjects(SaveTeacherDto d)
+    {
+        var list = d.Subjects?
+                       .Where(x => !string.IsNullOrWhiteSpace(x))
+                       .Select(x => x.Trim())
+                       .Distinct(StringComparer.OrdinalIgnoreCase)
+                       .ToList()
+                   ?? new List<string>();
+        if (list.Count == 0 && !string.IsNullOrWhiteSpace(d.Subject)) list.Add(d.Subject.Trim());
+        return list;
     }
 
     /// <summary>
@@ -148,8 +177,8 @@ public class TeacherService : ITeacherService
     {
         if (string.IsNullOrWhiteSpace(dto.FirstName) || string.IsNullOrWhiteSpace(dto.LastName))
             throw new ValidationException("First and last name are required.");
-        if (string.IsNullOrWhiteSpace(dto.Subject))
-            throw new ValidationException("Subject is required.");
+        if (Subjects(dto).Count == 0)
+            throw new ValidationException("Pick at least one subject this teacher takes.");
         if (string.IsNullOrWhiteSpace(dto.Phone))
             throw new ValidationException("Phone is required.");
     }
@@ -158,7 +187,11 @@ public class TeacherService : ITeacherService
     {
         t.FirstName = d.FirstName.Trim();
         t.LastName = d.LastName.Trim();
-        t.Specialization = d.Subject?.Trim();
+        // staff.specialization stays a joined summary: the teacher portal, profile screen and
+        // teacher search all read that single column, and the rows are the source of truth.
+        var subjectSummary = string.Join(", ", Subjects(d));
+        t.Specialization = subjectSummary.Length == 0 ? null
+            : (subjectSummary.Length > 255 ? subjectSummary[..255] : subjectSummary);
         t.Phone = d.Phone?.Trim();
         t.Email = d.Email;
         // staff.qualification stays a joined summary: the teacher portal and profile screens

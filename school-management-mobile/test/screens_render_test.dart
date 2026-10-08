@@ -11,6 +11,9 @@ import 'package:school_management_mobile/features/profile/profile_screen.dart';
 import 'package:school_management_mobile/features/results/results_screen.dart';
 import 'package:school_management_mobile/features/settings/settings_screen.dart';
 import 'package:school_management_mobile/features/shell/app_shell.dart';
+import 'package:school_management_mobile/features/staff/admin_screens.dart';
+import 'package:school_management_mobile/features/staff/super_admin_screens.dart';
+import 'package:school_management_mobile/features/staff/teacher_screens.dart';
 import 'package:school_management_mobile/features/timetable/timetable_screen.dart';
 
 /// Screens are pumped at a few common phone sizes in both themes. Any
@@ -33,6 +36,21 @@ void main() {
     'Notifications': () => const NotificationsScreen(),
     'Profile': () => const ProfileScreen(),
     'Settings': () => const SettingsScreen(),
+    // Staff portals. Each is pumped with no session, so every store is in its
+    // loading state — which is exactly the frame most likely to overflow,
+    // since the spinner and the empty app bar have to lay out on their own.
+    'Teacher home': () => const TeacherHomeScreen(),
+    'Teacher classes': () => const TeacherClassesScreen(),
+    'Teacher timetable': () => const TeacherTimetableScreen(),
+    'Teacher leave': () => const TeacherLeaveScreen(),
+    'Admin home': () => const AdminHomeScreen(),
+    'Admin students': () => const AdminStudentsScreen(),
+    'Admin teachers': () => const AdminTeachersScreen(),
+    'Admin fees': () => const AdminFeesScreen(),
+    'Platform home': () => const PlatformHomeScreen(),
+    'Platform schools': () => const PlatformSchoolsScreen(),
+    'Platform subscriptions': () => const PlatformSubscriptionsScreen(),
+    'Platform tickets': () => const PlatformTicketsScreen(),
   };
 
   for (final ({String name, Size size}) device in devices) {

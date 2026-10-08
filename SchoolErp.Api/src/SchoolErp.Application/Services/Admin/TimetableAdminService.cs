@@ -222,8 +222,199 @@ public class TimetableAdminService : ITimetableAdminService
         }, ct);
     }
 
-    /// <summary>Periods, seeded on first use so a new school is not left with an empty grid.</summary>
-    private async Task<IReadOnlyList<TimetablePeriodDto>> PeriodsAsync(long schoolId, CancellationToken ct)
+    /// <summary>
+    /// Empties the grid so it can be built again. Only the scheduled cells go: the period
+    /// columns and the school's working days are how the week is shaped, not what is in it, and
+    /// wiping those would leave the admin with nothing to rebuild onto.
+    /// </summary>
+    public async Task<ResetTimetableResultDto> ResetAsync(ResetTimetableDto dto, CancellationToken ct = default)
+    {
+        var sid = _school.SchoolId;
+        var day = dto?.DayOfWeek;
+        if (day is not null && day is < 1 or > 7)
+            throw new ValidationException("That is not a day of the week.");
+
+        var cleared = await _repo.ClearSlotsAsync(sid, day, ct);
+        return new ResetTimetableResultDto(cleared, day is null ? "the whole week" : DayName(day.Value));
+    }
+
+    // ================================================================= periods
+    //
+    // A cell is keyed on the period's *position* in the day (period_no), not on the period row's
+    // id, so every structural change here has to renumber the cells that sit after it — otherwise
+    // adding a morning period silently slides every subject one column to the right. Position is
+    // derived from the clock rather than kept by hand: periods cannot overlap, so their start
+    // times already order the day, and there is no separate "reorder" step to get out of step.
+
+    /// <summary>Shortest and longest a period may run — a typo of 5 hours is not a school day.</summary>
+    private const int MinDurationMinutes = 5;
+    private const int MaxDurationMinutes = 480;
+
+    public async Task<IReadOnlyList<PeriodDto>> GetPeriodsAsync(CancellationToken ct = default)
+    {
+        var sid = _school.SchoolId;
+        var rows = await SeededPeriodsAsync(sid, ct);
+
+        var list = new List<PeriodDto>(rows.Count);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var p = rows[i];
+            list.Add(new PeriodDto(
+                p.Id, i + 1, p.Name,
+                Clock(p.StartTime), Clock(p.EndTime),
+                (int)(p.EndTime - p.StartTime).TotalMinutes,
+                p.IsBreak,
+                await _repo.CountSlotsAtPeriodAsync(sid, i + 1, ct)));
+        }
+        return list;
+    }
+
+    public async Task<long> CreatePeriodAsync(SavePeriodDto dto, CancellationToken ct = default)
+    {
+        var sid = _school.SchoolId;
+        var (name, start, end) = ValidatePeriod(dto);
+
+        var rows = await SeededPeriodsAsync(sid, ct);
+        EnsureNoClash(rows, name, start, end, excludeId: null);
+
+        // The day is ordered by the clock, so the new period lands after everything starting
+        // earlier — and the cells from that position on have to make room for it.
+        var position = rows.Count(p => p.StartTime < start) + 1;
+        await _repo.OpenSlotGapAsync(sid, position, ct);
+
+        var id = await _repo.InsertPeriodAsync(new TimetablePeriod
+        {
+            SchoolId = sid,
+            Name = name,
+            StartTime = start,
+            EndTime = end,
+            IsBreak = dto.IsBreak,
+            SortOrder = position,
+        }, ct);
+
+        await ResequenceAsync(sid, ct);
+        return id;
+    }
+
+    public async Task UpdatePeriodAsync(long id, SavePeriodDto dto, CancellationToken ct = default)
+    {
+        var sid = _school.SchoolId;
+        var (name, start, end) = ValidatePeriod(dto);
+
+        var rows = await SeededPeriodsAsync(sid, ct);
+        var index = rows.FindIndex(p => p.Id == id);
+        if (index < 0) throw new NotFoundException("That period is not on this school's timetable.");
+
+        var existing = rows[index];
+        EnsureNoClash(rows, name, start, end, excludeId: id);
+
+        var from = index + 1;
+        var scheduled = await _repo.CountSlotsAtPeriodAsync(sid, from, ct);
+
+        // Turning a teaching period into a break would hide whatever is in it rather than
+        // delete it, so say what is in the way instead.
+        if (dto.IsBreak && !existing.IsBreak && scheduled > 0)
+            throw new ValidationException(
+                $"{existing.Name} still has {scheduled} scheduled period(s) across the school. " +
+                "Clear them before making it a break.");
+
+        // Retiming a period can move it past its neighbours; its cells travel with it.
+        var to = rows.Where(p => p.Id != id).Count(p => p.StartTime < start) + 1;
+        await _repo.MoveSlotPeriodAsync(sid, from, to, ct);
+
+        await _repo.UpdatePeriodAsync(new TimetablePeriod
+        {
+            Id = id,
+            SchoolId = sid,
+            Name = name,
+            StartTime = start,
+            EndTime = end,
+            IsBreak = dto.IsBreak,
+        }, ct);
+
+        await ResequenceAsync(sid, ct);
+    }
+
+    public async Task DeletePeriodAsync(long id, CancellationToken ct = default)
+    {
+        var sid = _school.SchoolId;
+        var rows = await SeededPeriodsAsync(sid, ct);
+        var index = rows.FindIndex(p => p.Id == id);
+        if (index < 0) throw new NotFoundException("That period is not on this school's timetable.");
+
+        var position = index + 1;
+        var scheduled = await _repo.CountSlotsAtPeriodAsync(sid, position, ct);
+        if (scheduled > 0)
+            throw new ValidationException(
+                $"{rows[index].Name} still has {scheduled} scheduled period(s) across the school. " +
+                "Clear them before deleting it.");
+
+        await _repo.DeletePeriodAsync(sid, id, ct);
+        await _repo.CloseSlotGapAsync(sid, position, ct);
+        await ResequenceAsync(sid, ct);
+    }
+
+    /// <summary>
+    /// Reads the entered start time and duration back as a clean name and a start/end pair.
+    /// The end time is always derived, so the two can never drift apart.
+    /// </summary>
+    private static (string Name, TimeSpan Start, TimeSpan End) ValidatePeriod(SavePeriodDto dto)
+    {
+        var name = (dto.Name ?? string.Empty).Trim();
+        if (name.Length == 0) throw new ValidationException("Give the period a name, e.g. P1 or Lunch.");
+        if (name.Length > 40) throw new ValidationException("Period name is too long (40 characters max).");
+
+        if (!TimeSpan.TryParse((dto.StartTime ?? string.Empty).Trim(), out var start)
+            || start < TimeSpan.Zero || start >= TimeSpan.FromDays(1))
+            throw new ValidationException("Enter a start time as HH:mm, e.g. 10:00.");
+        start = new TimeSpan(start.Hours, start.Minutes, 0);
+
+        if (dto.DurationMinutes < MinDurationMinutes || dto.DurationMinutes > MaxDurationMinutes)
+            throw new ValidationException(
+                $"Duration must be between {MinDurationMinutes} and {MaxDurationMinutes} minutes.");
+
+        var end = start + TimeSpan.FromMinutes(dto.DurationMinutes);
+        if (end >= TimeSpan.FromDays(1))
+            throw new ValidationException("A period cannot run past midnight — shorten it or start it earlier.");
+
+        return (name, start, end);
+    }
+
+    /// <summary>Two periods cannot share a name or overlap on the clock.</summary>
+    private static void EnsureNoClash(IEnumerable<TimetablePeriod> rows, string name, TimeSpan start,
+        TimeSpan end, long? excludeId)
+    {
+        foreach (var p in rows)
+        {
+            if (p.Id == excludeId) continue;
+            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                throw new ValidationException($"There is already a period called {p.Name}.");
+            if (start < p.EndTime && p.StartTime < end)
+                throw new ValidationException(
+                    $"That overlaps {p.Name} ({Clock(p.StartTime)}–{Clock(p.EndTime)}). Periods cannot run at the same time.");
+        }
+    }
+
+    /// <summary>Puts sort_order back in step with the clock after a period is added, moved or removed.</summary>
+    private async Task ResequenceAsync(long schoolId, CancellationToken ct)
+    {
+        var rows = (await _repo.GetPeriodsAsync(schoolId, ct)).OrderBy(p => p.StartTime).ToList();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (rows[i].SortOrder != i + 1)
+                await _repo.SetPeriodSortOrderAsync(schoolId, rows[i].Id, i + 1, ct);
+            // The cells carry a copy of the time for the portals to render; re-stamp it, since
+            // the period now at this position may not be the one that was here before.
+            await _repo.SetSlotTimeLabelAsync(schoolId, i + 1, TimeLabel(rows[i]), ct);
+        }
+    }
+
+    /// <summary>
+    /// The school's periods in clock order, seeded on first use so a new school is not left with
+    /// an empty grid. Ordering on the clock rather than on sort_order is what makes a period's
+    /// position in the day a fact about its start time, not a second thing to keep in step.
+    /// </summary>
+    private async Task<List<TimetablePeriod>> SeededPeriodsAsync(long schoolId, CancellationToken ct)
     {
         var rows = await _repo.GetPeriodsAsync(schoolId, ct);
         if (rows.Count == 0)
@@ -231,9 +422,18 @@ public class TimetableAdminService : ITimetableAdminService
             await _repo.SeedDefaultPeriodsAsync(schoolId, ct);
             rows = await _repo.GetPeriodsAsync(schoolId, ct);
         }
+        return rows.OrderBy(p => p.StartTime).ToList();
+    }
+
+    private static string Clock(TimeSpan t) => $"{t:hh\\:mm}";
+    private static string TimeLabel(TimetablePeriod p) => $"{Clock(p.StartTime)}–{Clock(p.EndTime)}";
+
+    /// <summary>Periods, seeded on first use so a new school is not left with an empty grid.</summary>
+    private async Task<IReadOnlyList<TimetablePeriodDto>> PeriodsAsync(long schoolId, CancellationToken ct)
+    {
+        var rows = await SeededPeriodsAsync(schoolId, ct);
         // period_no is the running order, breaks included, so the grid columns line up with it.
-        return rows.Select((p, i) => new TimetablePeriodDto(
-            i + 1, p.Name, $"{p.StartTime:hh\\:mm}–{p.EndTime:hh\\:mm}", p.IsBreak)).ToList();
+        return rows.Select((p, i) => new TimetablePeriodDto(i + 1, p.Name, TimeLabel(p), p.IsBreak)).ToList();
     }
 
     /// <summary>What the class studies, each paired with the teacher assigned to this section.</summary>

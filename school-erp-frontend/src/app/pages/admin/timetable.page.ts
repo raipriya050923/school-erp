@@ -1,5 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { IconComponent } from '../../shared/icon.component';
 import {
   AdminApiService, adminApiError, DayTimetable, DayRow, TimetableCell, TimetablePeriod,
   TimetableSubjectOption, TeacherListItem, TeacherWeek, TeacherWeekCell, TeacherAssignmentOption,
@@ -16,7 +18,7 @@ import {
 @Component({
   selector: 'app-ad-timetable',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink, IconComponent],
   template: `
     <div class="page-head">
       <div class="grow">
@@ -30,6 +32,13 @@ import {
           }
         </div>
       </div>
+      <button class="btn btn-ghost" (click)="openWorkingDays()" title="Choose which days the school runs">
+        Working days
+      </button>
+      <a class="btn btn-primary" routerLink="/admin/timetable/periods"
+         title="Add periods and set how long each one runs">
+        <app-icon name="clock" [size]="16" /> Periods
+      </a>
     </div>
 
     <div class="card">
@@ -49,8 +58,9 @@ import {
                   title="Suggest subjects for the empty periods, without double-booking a teacher">
             {{ autoFilling ? 'Suggesting…' : 'Suggest for ' + dayLabel(day) }}
           </button>
-          <button class="btn btn-ghost btn-sm" (click)="openWorkingDays()" title="Choose which days the school runs">
-            Working days
+          <button class="btn btn-ghost btn-sm danger" (click)="openReset()"
+                  title="Clear what is scheduled, so the grid can be built again">
+            Reset
           </button>
           <div class="grow"></div>
           <div class="field" style="margin:0;min-width:210px;">
@@ -180,6 +190,53 @@ import {
         </div>
       }
     </div>
+
+    <!--
+      Emptying the grid. The scope is chosen in the dialog rather than split across two buttons,
+      because the difference between "this day" and "the whole week" is exactly what needs to be
+      read carefully before confirming.
+    -->
+    @if (showReset) {
+      <div class="modal-backdrop" (click)="showReset = false">
+        <div class="modal" (click)="$event.stopPropagation()" style="max-width: 480px;">
+          <div class="modal-head">
+            <div class="grow">
+              <h2>Reset timetable</h2>
+              <div class="td-sub" style="margin-top:2px;">This cannot be undone.</div>
+            </div>
+            <button class="modal-close" (click)="showReset = false">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="field">
+              <label>What to clear</label>
+              <div class="chip-picker">
+                <label class="pick-chip" [class.on]="resetScope === 'day'">
+                  <input type="radio" name="resetScope" [checked]="resetScope === 'day'"
+                         (change)="resetScope = 'day'" />
+                  {{ dayLabel(day) }} only — {{ filledToday }} period(s)
+                </label>
+                <label class="pick-chip" [class.on]="resetScope === 'week'">
+                  <input type="radio" name="resetScope" [checked]="resetScope === 'week'"
+                         (change)="resetScope = 'week'" />
+                  The whole week — every day
+                </label>
+              </div>
+            </div>
+            <div class="field-hint">
+              Only what is scheduled is removed. Your periods and working days stay as they are,
+              so you can fill the grid again straight away.
+            </div>
+            @if (formError) { <div class="field-error" style="margin-top:10px;">{{ formError }}</div> }
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-ghost" (click)="showReset = false">Cancel</button>
+            <button class="btn btn-danger" (click)="confirmReset()" [disabled]="resetting">
+              {{ resetting ? 'Clearing…' : (resetScope === 'day' ? 'Clear ' + dayLabel(day) : 'Clear the whole week') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
 
     <!-- Which days the school runs -->
     @if (showWorkingDays) {
@@ -362,7 +419,11 @@ export class AdTimetableComponent implements OnInit {
   workingDays: number[] = [1, 2, 3, 4, 5, 6];
   showWorkingDays = false;
   draftDays: number[] = [];
+
   autoFilling = false;
+  showReset = false;
+  resetScope: 'day' | 'week' = 'day';
+  resetting = false;
   /** Anything the suggestion could not place, shown under the grid. */
   autoFillNotes: string[] = [];
 
@@ -424,6 +485,35 @@ export class AdTimetableComponent implements OnInit {
         this.loadDay();
       },
       error: e => { this.autoFilling = false; this.error = adminApiError(e); },
+    });
+  }
+
+  openReset(): void {
+    this.resetScope = 'day';
+    this.formError = '';
+    this.showReset = true;
+  }
+
+  /**
+   * Wipes what is scheduled so the grid can be built again. Deliberately does not touch the
+   * period columns or the working days — those are the shape of the week, and clearing them
+   * would leave nothing to rebuild onto.
+   */
+  confirmReset(): void {
+    this.resetting = true;
+    this.formError = '';
+    this.api.resetTimetable(this.resetScope === 'week' ? null : this.day).subscribe({
+      next: r => {
+        this.resetting = false;
+        this.showReset = false;
+        this.autoFillNotes = [];
+        this.showToast(r.cleared
+          ? `${r.cleared} period(s) cleared from ${r.scope}`
+          : `Nothing to clear — ${r.scope} was already empty`);
+        this.loadDay();
+        if (this.staffId) this.loadTeacher();
+      },
+      error: e => { this.resetting = false; this.formError = adminApiError(e); },
     });
   }
 

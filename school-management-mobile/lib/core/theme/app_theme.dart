@@ -13,7 +13,9 @@ class AppRadius {
   static const double xl = 24;
   static const double pill = 999;
 
-  static const BorderRadius cardRadius = BorderRadius.all(Radius.circular(lg));
+  /// 14px, matching the web's --radius. Cards were 18px, which read noticeably
+  /// rounder than the same card on the website.
+  static const BorderRadius cardRadius = BorderRadius.all(Radius.circular(md));
   static const BorderRadius heroRadius = BorderRadius.all(Radius.circular(xl));
 }
 
@@ -108,8 +110,9 @@ class AppTheme {
         style: FilledButton.styleFrom(
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 20),
+          elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
           textStyle: const TextStyle(
             fontSize: 15,
@@ -124,7 +127,7 @@ class AppTheme {
           foregroundColor: scheme.primary,
           side: BorderSide(color: border),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
@@ -137,7 +140,8 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? AppColors.darkSurfaceAlt : AppColors.lightSurfaceAlt,
+        // The web's .input sits on --surface with a border, not on a grey fill.
+        fillColor: isDark ? AppColors.darkSurfaceAlt : AppColors.lightSurface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,
@@ -145,25 +149,28 @@ class AppTheme {
         hintStyle: textTheme.bodyMedium?.copyWith(
           color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
         ),
+        // --radius-sm: the web sets controls rounder than nothing but flatter
+        // than cards, so a field inside a card still reads as a field.
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: BorderSide(color: border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: BorderSide(color: border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: BorderSide(color: scheme.primary, width: 1.6),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
+        // --brand-tint, the same wash the web sidebar puts behind an active item.
         indicatorColor: isDark
             ? AppColors.primary900.withValues(alpha: 0.55)
-            : AppColors.primary50,
+            : AppColors.primaryTint,
         elevation: 0,
         height: 68,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
@@ -202,7 +209,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: isDark ? AppColors.darkSurfaceAlt : const Color(0xFF1E293B),
+        backgroundColor: isDark ? AppColors.darkSurfaceAlt : AppColors.lightTextPrimary,
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),

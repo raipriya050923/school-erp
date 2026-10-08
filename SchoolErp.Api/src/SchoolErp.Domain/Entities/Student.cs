@@ -28,6 +28,12 @@ public class Student
     public long? StateId { get; set; }
     public long? CityId { get; set; }
     public string? PreviousSchool { get; set; }
+    /// <summary>
+    /// Transfer certificate number from the school the student left. Optional and not unique:
+    /// it belongs to the issuing school's numbering, so two arrivals from different schools may
+    /// legitimately share one, and a student admitted at nursery has none.
+    /// </summary>
+    public string? TcNo { get; set; }
     public DateTime? AdmissionDate { get; set; }
     public decimal FeeDue { get; set; }
     public string Status { get; set; } = "active";  // active | inactive | transferred | graduated | dropped

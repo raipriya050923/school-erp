@@ -107,3 +107,40 @@ public class MarksProgressRow
     public int Entered { get; set; }
     public int Total { get; set; }
 }
+
+/// <summary>
+/// A payment a student or parent says they have made, awaiting the school's confirmation.
+/// Maps to `fee_payment_submission`. It becomes a <see cref="FeePayment"/> only on verification —
+/// until then it is a claim, and counts towards nothing.
+/// </summary>
+public class FeePaymentSubmission
+{
+    public long Id { get; set; }
+    public long SchoolId { get; set; }
+    public long InvoiceId { get; set; }
+    public long StudentId { get; set; }
+
+    public decimal Amount { get; set; }
+    public string Method { get; set; } = string.Empty;
+    public string? Reference { get; set; }
+    public DateTime PaidDate { get; set; }
+    public string? Note { get; set; }
+
+    /// <summary>pending | verified | rejected</summary>
+    public string Status { get; set; } = "pending";
+
+    public long? SubmittedBy { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public long? ReviewedBy { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+    public string? ReviewNote { get; set; }
+    public long? PaymentId { get; set; }
+
+    /* Joined for the admin queue, so a reviewer sees who and what without a second lookup. */
+    public string? StudentName { get; set; }
+    public string? ClassLabel { get; set; }
+    public string? InvoiceNo { get; set; }
+    public string? Month { get; set; }
+    public decimal InvoiceAmount { get; set; }
+    public decimal InvoicePaid { get; set; }
+}

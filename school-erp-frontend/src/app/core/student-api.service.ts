@@ -1,3 +1,5 @@
+import { FeeReceipt } from '../shared/fee-receipt.component';
+import { FeePaymentDto } from './admin-api.service';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -31,7 +33,22 @@ export interface StudentTimetable {
 export interface StudentResult { subject: string; fullMarks: number; marks: number | null; grade: string; }
 export interface UpcomingPaper { date: string | null; subject: string; time: string | null; room: string | null; }
 export interface StudentExams { examName: string | null; total: number; fullTotal: number; percent: number; grade: string; results: StudentResult[]; upcoming: UpcomingPaper[]; }
-export interface StudentFee { invoiceNo: string | null; month: string | null; amount: number; paid: number; balance: number; dueDate: string | null; status: string; }
+export interface StudentFee {
+  id: number; invoiceNo: string | null; month: string | null;
+  amount: number; paid: number; balance: number; dueDate: string | null; status: string;
+  /** A payment is already queued on this invoice, so it cannot be declared twice. */
+  hasPendingSubmission: boolean;
+}
+/** A payment the family has declared, and what the school made of it. */
+export interface StudentFeeSubmission {
+  id: number; invoiceId: number; invoiceNo: string | null; month: string | null;
+  amount: number; method: string; reference: string | null; paidDate: string;
+  status: string; submittedAt: string; reviewedAt: string | null; reviewNote: string | null;
+}
+export interface SubmitFeePayment {
+  amount: number; method: string; reference: string | null;
+  paidDate: string | null; note: string | null;
+}
 export interface StudentNotice { id: number; title: string; body: string; audience: string; publishDate: string; }
 
 @Injectable({ providedIn: 'root' })
@@ -45,6 +62,21 @@ export class StudentApiService {
   getHomework(): Observable<StudentHomework[]> { return this.http.get<StudentHomework[]>(`${this.base}/homework`); }
   getExams(): Observable<StudentExams> { return this.http.get<StudentExams>(`${this.base}/exams`); }
   getFees(): Observable<StudentFee[]> { return this.http.get<StudentFee[]>(`${this.base}/fees`); }
+  /** Payments confirmed against one of this student's invoices — one receipt each. */
+  invoicePayments(invoiceId: number): Observable<FeePaymentDto[]> {
+    return this.http.get<FeePaymentDto[]>(`${this.base}/fees/${invoiceId}/payments`);
+  }
+  /** The printable receipt for one of this student's payments. */
+  paymentReceipt(paymentId: number): Observable<FeeReceipt> {
+    return this.http.get<FeeReceipt>(`${this.base}/fees/payments/${paymentId}/receipt`);
+  }
+  /** Declares a payment made outside the system; the school confirms it before anything changes. */
+  submitFeePayment(invoiceId: number, dto: SubmitFeePayment): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/fees/${invoiceId}/submit`, dto);
+  }
+  getFeeSubmissions(): Observable<StudentFeeSubmission[]> {
+    return this.http.get<StudentFeeSubmission[]>(`${this.base}/fees/submissions`);
+  }
   getNotices(): Observable<StudentNotice[]> { return this.http.get<StudentNotice[]>(`${this.base}/notices`); }
 }
 

@@ -1,3 +1,4 @@
+using SchoolErp.Application.DTOs.Billing;
 using SchoolErp.Application.DTOs.Admin;
 using SchoolErp.Application.DTOs.Transactional;
 
@@ -67,5 +68,17 @@ public interface IAdminFeeService
     /// <summary>The head-by-head breakdown behind one invoice total.</summary>
     Task<IReadOnlyList<FeeInvoiceLineDto>> LinesAsync(long invoiceId, CancellationToken ct = default);
     Task RecordPaymentAsync(long invoiceId, RecordFeePaymentDto dto, CancellationToken ct = default);
+    /// <summary>Every payment taken against one invoice, oldest first.</summary>
+    Task<IReadOnlyList<FeePaymentDto>> PaymentsAsync(long invoiceId, CancellationToken ct = default);
+    /// <summary>The printable receipt for one payment, or null if it is not this school's.</summary>
+    Task<FeeReceiptDto?> ReceiptAsync(long paymentId, CancellationToken ct = default);
     Task<GenerateInvoicesResultDto> GenerateAsync(GenerateInvoicesDto dto, CancellationToken ct = default);
+
+    /// <summary>Payments families have declared. Null status returns all, pending first.</summary>
+    Task<IReadOnlyList<FeeSubmissionDto>> ListSubmissionsAsync(string? status, CancellationToken ct = default);
+    /// <summary>
+    /// Settles one claim. Approving records the money against the invoice exactly as a counter
+    /// payment would; rejecting leaves the invoice untouched and returns the reason to the family.
+    /// </summary>
+    Task ReviewSubmissionAsync(long id, ReviewFeeSubmissionDto dto, CancellationToken ct = default);
 }

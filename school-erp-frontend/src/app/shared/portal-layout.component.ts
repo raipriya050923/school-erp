@@ -17,12 +17,12 @@ export interface NavItem {
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent, FormsModule],
   template: `
-    <div class="layout" [class.nav-open]="navOpen" [class.collapsed]="collapsed">
+    <div class="layout" [attr.data-theme]="theme" [class.nav-open]="navOpen" [class.collapsed]="collapsed">
       <aside class="sidebar">
         <div class="brand">
           <span class="brand-mark"><app-icon name="cap" [size]="22" /></span>
           <div class="brand-text">
-            <div class="brand-name">EduNexus</div>
+            <div class="brand-name">पाठशाला</div>
             <div class="brand-portal">{{ portal }}</div>
           </div>
         </div>
@@ -36,8 +36,21 @@ export interface NavItem {
             </a>
           }
         </nav>
-        <div class="sidebar-foot">
-          <span class="dot"></span> <span class="foot-text">Demo build · dummy data</span>
+
+        <!--
+          Sticky, so it stays reachable on a long module list rather than scrolling away with
+          the nav. The same action also lives in the avatar menu — this is the one people
+          actually look for, at the foot of the thing they navigate with.
+        -->
+        <div class="side-foot">
+          <button class="side-logout" (click)="logout()" [title]="collapsed ? 'Sign out' : ''">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </span>
+            <span class="nav-label">Sign out</span>
+          </button>
         </div>
       </aside>
 
@@ -105,7 +118,7 @@ export interface NavItem {
             <button class="user-chip" (click)="menuOpen = !menuOpen" [class.active]="menuOpen">
               <div class="user-meta">
                 <div class="user-name">{{ auth.user()?.name }}</div>
-                <div class="user-title">{{ auth.user()?.title }}</div>
+                <span class="role-badge">{{ auth.user()?.title }}</span>
               </div>
               <div class="avatar">{{ initials }}</div>
               <svg class="chevron" [class.open]="menuOpen" viewBox="0 0 24 24" fill="none"
@@ -196,6 +209,67 @@ export interface NavItem {
       </div>
     }
 
+    <!--
+      Appearance. The palette belongs to the school, not the person: an admin picking Forest
+      changes what their teachers and students see too, which the copy says out loud.
+    -->
+    @if (showSettings) {
+      <div class="modal-backdrop">
+        <div class="modal" style="max-width: 560px;">
+          <div class="modal-head">
+            <div class="grow">
+              <h2>Settings</h2>
+              <div class="td-sub" style="margin-top:2px;">{{ auth.user()?.name }}</div>
+            </div>
+            <button class="modal-close" (click)="showSettings = false">✕</button>
+          </div>
+          <div class="modal-body">
+            @if (canSetTheme) {
+              <div class="field">
+                <label>Portal colour</label>
+                <div class="theme-picker">
+                  @for (t of palettes; track t.key) {
+                    <button type="button" class="theme-swatch" [class.on]="theme === t.key"
+                            (click)="chooseTheme(t.key)" [disabled]="savingTheme"
+                            [attr.aria-pressed]="theme === t.key" [title]="t.note">
+                      <span class="theme-chip" [style.background]="t.rail">
+                        <span class="theme-pill" [style.background]="t.pill"></span>
+                      </span>
+                      <span class="theme-name">{{ t.name }}</span>
+                    </button>
+                  }
+                </div>
+                <div class="field-hint">
+                  Changes the sidebar for everyone at your school — teachers and students included.
+                </div>
+                @if (themeError) { <div class="field-error">{{ themeError }}</div> }
+              </div>
+            } @else {
+              <div class="field">
+                <label>Portal colour</label>
+                <div class="theme-picker">
+                  @for (t of palettes; track t.key) {
+                    @if (theme === t.key) {
+                      <span class="theme-swatch on">
+                        <span class="theme-chip" [style.background]="t.rail">
+                          <span class="theme-pill" [style.background]="t.pill"></span>
+                        </span>
+                        <span class="theme-name">{{ t.name }}</span>
+                      </span>
+                    }
+                  }
+                </div>
+                <div class="field-hint">Your school's administrator chooses this.</div>
+              </div>
+            }
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-ghost" (click)="showSettings = false">Close</button>
+          </div>
+        </div>
+      </div>
+    }
+
     @if (toast) { <div class="toast success">{{ toast }}</div> }
   `,
 })
@@ -208,6 +282,12 @@ export class PortalLayoutComponent implements OnInit {
   readonly portal: string = this.route.snapshot.data['portal'] ?? '';
   readonly nav: NavItem[] = this.route.snapshot.data['nav'] ?? [];
   bellOpen = false;
+  /**
+   * The school's shell palette, stamped on the layout so `styles.scss` can redefine the sidebar
+   * tokens for it. Falls back to classic for a platform user, who belongs to no school.
+   */
+  get theme(): string { return this.auth.user()?.theme || 'classic'; }
+
   navOpen = false;
   collapsed = localStorage.getItem('erp.sidebarCollapsed') === '1';
   menuOpen = false;
@@ -295,9 +375,35 @@ export class PortalLayoutComponent implements OnInit {
     });
   }
 
+  showSettings = false;
+  savingTheme = false;
+  themeError = '';
+  readonly palettes = AuthService.THEMES;
+
+  /** Only a school admin owns the school's colour; everyone else sees which one is in force. */
+  get canSetTheme(): boolean { return this.auth.user()?.role === 'school_admin'; }
+
   openSettings(): void {
     this.menuOpen = false;
-    this.showToast('Settings — coming soon');
+    this.themeError = '';
+    this.showSettings = true;
+  }
+
+  chooseTheme(key: string): void {
+    if (key === this.theme) return;
+    this.savingTheme = true;
+    this.themeError = '';
+    this.auth.setTheme(key).subscribe({
+      next: name => {
+        this.savingTheme = false;
+        // The session is already patched, so the rail has repainted behind the dialog.
+        this.showToast(`Portal colour set to ${this.palettes.find(p => p.key === name)?.name ?? name}`);
+      },
+      error: e => {
+        this.savingTheme = false;
+        this.themeError = e?.error?.message ?? 'Could not change the colour.';
+      },
+    });
   }
 
   logout(): void {

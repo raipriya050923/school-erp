@@ -21,7 +21,11 @@ public static class DependencyInjection
 
         // School Admin
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
+        // Plan entitlements: seats, expiry and the login gate. Registered once and
+        // shared, so login, admissions and the dashboard warning cannot disagree.
+        services.AddScoped<ISubscriptionGuard, SubscriptionGuard>();
         services.AddScoped<IStudentService, StudentService>();
+        services.AddScoped<IParentAccountService, ParentAccountService>();
         services.AddScoped<ITeacherService, TeacherService>();
         services.AddScoped<IClassService, ClassService>();
         services.AddScoped<INoticeService, NoticeService>();
@@ -41,6 +45,11 @@ public static class DependencyInjection
         services.AddScoped<Interfaces.Services.IAdminExamService, Services.Admin.AdminExamService>();
         services.AddScoped<Interfaces.Services.IAdminFeeService, Services.Admin.AdminFeeService>();
         services.AddScoped<Interfaces.Services.IFeeStructureService, Services.Admin.FeeStructureService>();
+        services.AddScoped<Interfaces.Services.ITransportService, Services.Admin.TransportService>();
+        services.AddScoped<Interfaces.Services.IAccountResetService, Services.Admin.AccountResetService>();
+        // Shared by both portals so the office and the family print the same document.
+        services.AddScoped<Services.FeeReceiptBuilder>();
+        services.AddScoped<Interfaces.Services.IStudentImportService, Services.Admin.StudentImportService>();
 
         // Student portal
         services.AddScoped<Interfaces.Services.IStudentPortalService, Services.StudentPortal.StudentPortalService>();

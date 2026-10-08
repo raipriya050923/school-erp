@@ -38,6 +38,35 @@ public record StudentExamsDto(
     string? ExamName, decimal Total, decimal FullTotal, int Percent, string Grade,
     IReadOnlyList<StudentResultDto> Results, IReadOnlyList<UpcomingPaperDto> Upcoming);
 
-public record StudentFeeDto(string? InvoiceNo, string? Month, decimal Amount, decimal Paid, decimal Balance, DateTime? DueDate, string Status);
+/// <summary>
+/// One invoice as the student sees it. <paramref name="Id"/> is what a payment is submitted
+/// against, and <paramref name="HasPendingSubmission"/> is why the Pay button turns into
+/// "awaiting confirmation" rather than letting the same transfer be declared twice.
+/// </summary>
+public record StudentFeeDto(long Id, string? InvoiceNo, string? Month, decimal Amount, decimal Paid,
+    decimal Balance, DateTime? DueDate, string Status, bool HasPendingSubmission);
+
+/// <summary>
+/// A payment the student says they have made. The school has to confirm it against its own
+/// statement, so nothing here changes what is owed until it is verified.
+/// </summary>
+public class SubmitFeePaymentDto
+{
+    public decimal Amount { get; set; }
+    /// <summary>How it was paid — upi, bank_transfer, cash, cheque, esewa, khalti…</summary>
+    public string Method { get; set; } = string.Empty;
+    /// <summary>The UPI/UTR/cheque number the office will match against the bank statement.</summary>
+    public string? Reference { get; set; }
+    public DateTime? PaidDate { get; set; }
+    public string? Note { get; set; }
+}
+
+/// <summary>A submitted payment and where it has got to, for the student's own history.</summary>
+public record StudentFeeSubmissionDto(
+    long Id, long InvoiceId, string? InvoiceNo, string? Month, decimal Amount, string Method,
+    string? Reference, DateTime PaidDate, string Status, DateTime SubmittedAt,
+    DateTime? ReviewedAt,
+    /// <summary>Why it was turned down. The whole point of showing a rejection.</summary>
+    string? ReviewNote);
 
 public record StudentNoticeDto(long Id, string Title, string Body, string Audience, DateTime PublishDate);

@@ -4,9 +4,10 @@ import { FormsModule } from '@angular/forms';
 import {
   AdminApiService, adminApiError,
   ClassDto, StudentListItem, AttendanceRow, AttendanceReport, ExamDto, ExamPaperDto,
-  FeeInvoiceDto, FeeSummaryDto, FeeInvoiceLineDto,
-  ExamApprovalDto,
+  FeeInvoiceDto, FeeSummaryDto, FeeInvoiceLineDto, FeeSubmissionDto,
+  ExamApprovalDto, ClassSubjects, FeePaymentDto,
 } from '../../core/admin-api.service';
+import { FeeReceiptComponent, FeeReceipt } from '../../shared/fee-receipt.component';
 import { FieldErrors } from '../../shared/field-errors';
 
 /**
@@ -183,7 +184,11 @@ export class AdAttendanceReportComponent implements OnInit {
   loading = true;
 
   ngOnInit(): void {
-    this.api.getStudents().subscribe({ next: s => { this.students = s; this.loading = false; }, error: () => this.loading = false });
+    // A picker, not a table: it wants every student at once, so it asks for a page big enough
+    // to be one. 500 is the server ceiling.
+    this.api.getStudents({ pageSize: 500 }).subscribe({
+      next: r => { this.students = r.items; this.loading = false; }, error: () => this.loading = false,
+    });
   }
   run(): void {
     if (!this.studentId) { alert('Please select a student.'); return; }
@@ -206,7 +211,7 @@ export class AdAttendanceReportComponent implements OnInit {
 @Component({
   selector: 'app-ad-fees',
   standalone: true,
-  imports: [FormsModule, DecimalPipe, DatePipe],
+  imports: [FormsModule, DecimalPipe, DatePipe, FeeReceiptComponent],
   template: `
     <div class="page-head">
       <div class="grow"><h1>Fee Management</h1><div class="page-sub">{{ invoices.length }} invoices</div></div>
@@ -219,6 +224,94 @@ export class AdAttendanceReportComponent implements OnInit {
         <div class="stat-tile"><div class="stat-label">Collected</div><div class="stat-value">₹{{ summary.collected | number }}</div><div class="stat-sub up">{{ pct }}% of billed</div></div>
         <div class="stat-tile"><div class="stat-label">Outstanding</div><div class="stat-value">₹{{ summary.outstanding | number }}</div><div class="stat-sub" [class.down]="summary.outstanding>0">{{ summary.unpaid }} unpaid/partial</div></div>
         <div class="stat-tile"><div class="stat-label">Overdue</div><div class="stat-value">{{ summary.overdue }}</div><div class="stat-sub down">invoices past due</div></div>
+      </div>
+    }
+
+    @if (reviewing_sub; as sub) {
+      <div class="modal-backdrop">
+        <div class="modal">
+          <div class="modal-head">
+            <h2>Review payment</h2>
+            <button class="modal-close" (click)="closeReview()" [disabled]="reviewing === sub.id">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="rv-intro">
+              <strong>{{ sub.studentName }}</strong> says they paid this. Check it against your
+              bank statement or counter record, then confirm or turn it down — nothing here needs
+              retyping.
+            </p>
+            <div class="kv-row"><span class="kv-label">Invoice</span><span class="kv-value">{{ sub.invoiceNo }} · {{ sub.month }}</span></div>
+            <div class="kv-row"><span class="kv-label">Amount paid</span><span class="kv-value"><strong>₹{{ sub.amount | number }}</strong></span></div>
+            <div class="kv-row"><span class="kv-label">Invoice balance</span><span class="kv-value">₹{{ sub.invoiceBalance | number }}</span></div>
+            <div class="kv-row"><span class="kv-label">Method</span><span class="kv-value">{{ sub.method }}</span></div>
+            <div class="kv-row"><span class="kv-label">Reference</span><span class="kv-value">{{ sub.reference || '—' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Paid on</span><span class="kv-value">{{ sub.paidDate | date:'mediumDate' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Submitted</span><span class="kv-value">{{ sub.submittedAt | date:'medium' }}</span></div>
+            @if (sub.note) {
+              <div class="kv-row"><span class="kv-label">Their note</span><span class="kv-value">“{{ sub.note }}”</span></div>
+            }
+            @if (sub.amount > sub.invoiceBalance) {
+              <div class="rv-warn">
+                This is more than the balance of ₹{{ sub.invoiceBalance | number }}. Confirming
+                still records the full amount.
+              </div>
+            }
+            @if (submissionError) { <div class="field-error">{{ submissionError }}</div> }
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-ghost danger" (click)="rejectSubmission(sub)" [disabled]="reviewing === sub.id">Turn down</button>
+            <button class="btn btn-primary" (click)="confirmSubmission(sub)" [disabled]="reviewing === sub.id">
+              {{ reviewing === sub.id ? 'Confirming…' : 'Confirm payment' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    @if (pendingSubmissions.length) {
+      <div class="card">
+        <div class="card-head">
+          <div class="grow">
+            <h2>Payments to confirm</h2>
+            <div class="td-sub" style="margin-top:2px;">
+              Declared by families. Check each against your bank statement before confirming —
+              confirming records the money and settles the invoice by that much.
+            </div>
+          </div>
+          <span class="badge warning">{{ pendingSubmissions.length }} waiting</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Submitted</th><th>Student</th><th>For</th><th class="num">Amount</th><th class="num">Balance</th><th>Method</th><th>Reference</th><th>Actions</th></tr></thead>
+            <tbody>
+              @for (sub of pendingSubmissions; track sub.id) {
+                <tr>
+                  <td class="td-sub">{{ sub.submittedAt | date:'mediumDate' }}</td>
+                  <td class="td-main">{{ sub.studentName }}<div class="td-sub">{{ sub.classLabel }}</div></td>
+                  <td class="td-sub">{{ sub.month || sub.invoiceNo }}</td>
+                  <td class="num" style="font-weight:600;">₹{{ sub.amount | number }}</td>
+                  <td class="num td-sub">₹{{ sub.invoiceBalance | number }}</td>
+                  <td class="td-sub">{{ sub.method }}<div class="td-sub">paid {{ sub.paidDate | date:'mediumDate' }}</div></td>
+                  <td class="td-sub">
+                    {{ sub.reference || '—' }}
+                    @if (sub.note) { <div class="td-sub" style="max-width:200px;white-space:normal;">“{{ sub.note }}”</div> }
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn btn-primary btn-sm" (click)="confirmSubmission(sub)" [disabled]="reviewing === sub.id">
+                        {{ reviewing === sub.id ? '…' : 'Confirm' }}
+                      </button>
+                      <button class="btn btn-ghost btn-sm danger" (click)="rejectSubmission(sub)" [disabled]="reviewing === sub.id">
+                        Reject
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (submissionError) { <div class="card-body" style="padding-top:0;"><div class="field-error">{{ submissionError }}</div></div> }
       </div>
     }
 
@@ -245,8 +338,39 @@ export class AdAttendanceReportComponent implements OnInit {
                   <td class="num"><button class="link-amount" (click)="openBreakdown(i)" title="What makes up this amount">₹{{ i.amount | number }}</button></td>
                   <td class="num">@if (i.balance > 0) { <span style="color:var(--crit-text);font-weight:600;">₹{{ i.balance | number }}</span> } @else { <span class="td-sub">—</span> }</td>
                   <td class="td-sub">{{ i.dueDate | date:'mediumDate' }}</td>
-                  <td><span class="badge" [class]="'badge ' + feeBadge(i.status)">{{ label(i.status) }}</span></td>
-                  <td>@if (i.status !== 'paid') { <button class="btn btn-primary btn-sm" (click)="openPay(i)">Record Payment</button> } @else { <span class="td-sub">—</span> }</td>
+                  <td>
+                    <span class="badge" [class]="'badge ' + feeBadge(i.status)">{{ label(i.status) }}</span>
+                    @if (pendingFor(i)) { <div class="td-sub awaiting">payment submitted</div> }
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <!--
+                        A family that has already declared a payment has given the amount, the date,
+                        the method and the reference. Offering "Record Payment" here invites the
+                        office to type all four again and create a second record of one payment, so
+                        an invoice with something waiting offers review instead.
+                      -->
+                      @if (pendingFor(i); as sub) {
+                        <button class="btn btn-primary btn-sm" (click)="openReview(sub)">Review payment</button>
+                      } @else if (i.status !== 'paid') {
+                        <button class="btn btn-primary btn-sm" (click)="openPay(i)">Record Payment</button>
+                      }
+                      <!--
+                        Offered on anything with money against it, settled or not. A paid invoice
+                        used to show a dash — the one row where the office is most likely to be
+                        asked for something, and the only one that offered nothing at all.
+                      -->
+                      @if (i.paid > 0) {
+                        <button class="btn btn-ghost btn-sm" (click)="viewReceipt(i)"
+                                [disabled]="loadingReceiptFor === i.id">
+                          {{ loadingReceiptFor === i.id ? '…' : 'View receipt' }}
+                        </button>
+                      }
+                      @if (!pendingFor(i) && i.status === 'paid' && i.paid <= 0) {
+                        <span class="td-sub">—</span>
+                      }
+                    </div>
+                  </td>
                 </tr>
               } @empty { <tr><td colspan="9"><div class="empty">No invoices.</div></td></tr> }
             </tbody>
@@ -313,10 +437,54 @@ export class AdAttendanceReportComponent implements OnInit {
             <div class="td-sub">
               Creates one invoice per active student who isn't already billed for that month.
               Amounts come from Fee Structure — monthly heads always, yearly and one-time only when ticked.
+              Safe to tick again: a student who has already paid a one-time or yearly head is not
+              charged for it twice, so this also catches anyone admitted since the last run. If a
+              month was already invoiced without these charges, re-run it with this ticked and the
+              existing invoices are topped up.
             </div>
             @if (formError) { <div style="color:var(--crit-text);font-size:13px;margin-top:8px;">{{ formError }}</div> }
           </div>
           <div class="modal-foot"><button class="btn btn-ghost" (click)="showGen = false">Cancel</button><button class="btn btn-primary" (click)="generate()" [disabled]="saving">Generate</button></div>
+        </div>
+      </div>
+    }
+
+    @if (receipt; as r) {
+      <app-fee-receipt [r]="r" (closed)="receipt = null" />
+    }
+
+    <!--
+      Only raised when an invoice has been paid more than once. A single payment opens its
+      receipt directly: making the office pick from a list of one is a click that teaches nothing.
+    -->
+    @if (receiptPicker; as inv) {
+      <div class="modal-backdrop">
+        <div class="modal">
+          <div class="modal-head">
+            <h2>{{ inv.invoiceNo }} — receipts</h2>
+            <button class="modal-close" (click)="receiptPicker = null">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="td-sub" style="margin:0 0 12px;">
+              {{ inv.studentName }} paid this invoice in {{ (pickerPayments || []).length }} instalments.
+              Each one has its own receipt.
+            </p>
+            <table class="data-table">
+              <thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th class="num">Amount</th><th></th></tr></thead>
+              <tbody>
+                @for (pay of pickerPayments; track pay.id) {
+                  <tr>
+                    <td class="td-sub">{{ pay.receiptNo }}</td>
+                    <td class="td-sub">{{ pay.paidDate | date:'mediumDate' }}</td>
+                    <td class="td-sub">{{ pay.method || '—' }}</td>
+                    <td class="num">₹{{ pay.amount | number }}</td>
+                    <td><button class="btn btn-ghost btn-sm" (click)="openReceipt(pay.id); receiptPicker = null">View</button></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="modal-foot"><button class="btn btn-ghost" (click)="receiptPicker = null">Close</button></div>
         </div>
       </div>
     }
@@ -343,6 +511,32 @@ export class AdAttendanceReportComponent implements OnInit {
                 These are the prices that were in force when the invoice was raised. Changing Fee
                 Structure now affects the next run, not this invoice.
               </div>
+
+              <!--
+                Payments sit beside the breakdown rather than on their own screen: the question
+                "what was this bill, and what has been paid against it" is one question, and the
+                receipt is what the family asks for while it is being answered.
+              -->
+              <h3 class="pay-head">Payments received</h3>
+              @if (payments === null) { <div class="empty">Loading…</div> }
+              @else if (!payments.length) {
+                <div class="empty">Nothing received against this invoice yet.</div>
+              } @else {
+                <table class="data-table">
+                  <thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th class="num">Amount</th><th></th></tr></thead>
+                  <tbody>
+                    @for (pay of payments; track pay.id) {
+                      <tr>
+                        <td class="td-sub">{{ pay.receiptNo }}</td>
+                        <td class="td-sub">{{ pay.paidDate | date:'mediumDate' }}</td>
+                        <td class="td-sub">{{ pay.method || '—' }}</td>
+                        <td class="num">₹{{ pay.amount | number }}</td>
+                        <td><button class="btn btn-ghost btn-sm" (click)="openReceipt(pay.id)">Receipt</button></td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
             }
           </div>
           <div class="modal-foot"><button class="btn btn-ghost" (click)="breakdownOf = null">Close</button></div>
@@ -354,8 +548,15 @@ export class AdAttendanceReportComponent implements OnInit {
   `,
   styles: [`
     .link-amount { background:none; border:none; padding:0; font:inherit; color:inherit; cursor:pointer; border-bottom:1px dashed var(--muted,#9ca3af); }
-    .link-amount:hover { color: var(--accent,#2563eb); }
+    .link-amount:hover { color: var(--brand-dark); }
     .check { display:flex; align-items:center; gap:8px; font-size:13px; margin:8px 0 4px; }
+    /* Marks an invoice whose family has already declared a payment, so the office does not
+       reach for the manual form and record the same money twice. */
+    .awaiting { color: var(--warn-text); font-weight: 600; margin-top: 2px; }
+    .pay-head { font-size: 13px; font-weight: 700; margin: 20px 0 8px; }
+    .rv-intro { font-size: 13.5px; line-height: 1.6; margin: 0 0 14px; }
+    .rv-warn { background: var(--warn-tint); color: var(--warn-text); font-size: 12.5px;
+               line-height: 1.5; padding: 9px 12px; border-radius: 8px; margin-top: 12px; }
   `],
 })
 export class AdFeesComponent implements OnInit {
@@ -370,8 +571,24 @@ export class AdFeesComponent implements OnInit {
   formError = '';
   toast = '';
   paying: FeeInvoiceDto | null = null;
+  /** Declared payments the office has not matched yet. */
+  pendingSubmissions: FeeSubmissionDto[] = [];
+  /** The submission open in the review dialog, or null when it is closed. */
+  reviewing_sub: FeeSubmissionDto | null = null;
+  /** Id of the claim currently being decided, so its two buttons disable together. */
+  reviewing: number | null = null;
+  submissionError = '';
   showGen = false;
   breakdownOf: FeeInvoiceDto | null = null;
+  /** Payments on the invoice being examined; null while they are still loading. */
+  payments: FeePaymentDto[] | null = null;
+  /** The receipt on screen, or null when none is open. */
+  receipt: FeeReceipt | null = null;
+  /** The invoice whose instalments are being chosen between, when there is more than one. */
+  receiptPicker: FeeInvoiceDto | null = null;
+  pickerPayments: FeePaymentDto[] | null = null;
+  /** The row waiting on its payment list, so its button can say so. */
+  loadingReceiptFor: number | null = null;
   /** null while the lines are still loading. */
   breakdown: FeeInvoiceLineDto[] | null = null;
   payForm = { amount: 0, date: '2026-07-05', method: 'cash', ref: '' };
@@ -380,12 +597,58 @@ export class AdFeesComponent implements OnInit {
 
   get pct(): number { return this.summary && this.summary.totalBilled ? Math.round(this.summary.collected / this.summary.totalBilled * 100) : 0; }
 
+  /**
+   * Confirming is what actually moves the money onto the invoice, so it asks first — the
+   * amount and reference are right there in the row being confirmed.
+   */
+  /** The payment waiting on this invoice, if a family has declared one. */
+  pendingFor(i: FeeInvoiceDto): FeeSubmissionDto | null {
+    return this.pendingSubmissions.find(s => s.invoiceId === i.id) ?? null;
+  }
+
+  openReview(sub: FeeSubmissionDto): void { this.submissionError = ''; this.reviewing_sub = sub; }
+  closeReview(): void { this.reviewing_sub = null; this.submissionError = ''; }
+
+  confirmSubmission(sub: FeeSubmissionDto): void {
+    if (!confirm(`Confirm ₹${sub.amount} from ${sub.studentName} for ${sub.month || sub.invoiceNo}? This records the payment against the invoice.`)) return;
+    this.review(sub, true, null);
+  }
+
+  /** A rejection the family cannot act on is worse than none, so the reason is required. */
+  rejectSubmission(sub: FeeSubmissionDto): void {
+    const note = prompt(`Why can ₹${sub.amount} from ${sub.studentName} not be confirmed?\nThis is shown to them.`);
+    if (note === null) return;
+    if (!note.trim()) { this.submissionError = 'A reason is needed — the family sees it.'; return; }
+    this.review(sub, false, note.trim());
+  }
+
+  private review(sub: FeeSubmissionDto, approve: boolean, note: string | null): void {
+    this.reviewing = sub.id;
+    this.submissionError = '';
+    this.api.reviewFeeSubmission(sub.id, approve, note).subscribe({
+      next: () => {
+        this.reviewing = null;
+        // Closed here rather than at the call sites, so the dialog goes away only once the
+        // decision has actually been written.
+        this.reviewing_sub = null;
+        this.showToast(approve ? `₹${sub.amount} recorded for ${sub.studentName}` : 'Payment rejected');
+        // The invoice totals and the summary tiles both move on a confirmation.
+        this.reload();
+      },
+      error: e => { this.reviewing = null; this.submissionError = adminApiError(e); },
+    });
+  }
+
   ngOnInit(): void {
     this.reload();
     this.api.getClasses().subscribe({ next: c => this.classes = c.map(x => x.name), error: () => {} });
   }
   reload(): void {
     this.api.feeSummary().subscribe({ next: s => this.summary = s, error: () => {} });
+    this.api.feeSubmissions('pending').subscribe({
+      next: s => this.pendingSubmissions = s,
+      error: () => this.pendingSubmissions = [],
+    });
     this.api.getInvoices(this.status || undefined).subscribe({
       next: i => { this.invoices = i; this.loading = false; this.error = ''; },
       error: e => { this.error = adminApiError(e); this.loading = false; },
@@ -419,10 +682,42 @@ export class AdFeesComponent implements OnInit {
       error: e => { this.saving = false; this.formError = adminApiError(e); },
     });
   }
+  /**
+   * The row's receipt action. Fetches the invoice's payments first because the row does not know
+   * how many there are — one opens straight away, several raise the picker.
+   */
+  viewReceipt(i: FeeInvoiceDto): void {
+    this.loadingReceiptFor = i.id;
+    this.api.invoicePayments(i.id).subscribe({
+      next: p => {
+        this.loadingReceiptFor = null;
+        if (p.length === 0) {
+          // Possible when the money came in as an opening balance rather than a payment row.
+          alert('No payment has been recorded against this invoice, so there is no receipt to show.');
+        } else if (p.length === 1) {
+          this.openReceipt(p[0].id);
+        } else {
+          this.pickerPayments = p;
+          this.receiptPicker = i;
+        }
+      },
+      error: e => { this.loadingReceiptFor = null; alert(adminApiError(e)); },
+    });
+  }
+
+  openReceipt(paymentId: number): void {
+    this.api.paymentReceipt(paymentId).subscribe({
+      next: r => this.receipt = r,
+      error: e => alert(adminApiError(e)),
+    });
+  }
+
   openBreakdown(i: FeeInvoiceDto): void {
     this.breakdownOf = i;
     this.breakdown = null;
+    this.payments = null;
     this.api.invoiceLines(i.id).subscribe({ next: l => this.breakdown = l, error: () => this.breakdown = [] });
+    this.api.invoicePayments(i.id).subscribe({ next: p => this.payments = p, error: () => this.payments = [] });
   }
 
   openGenerate(): void {
@@ -448,15 +743,35 @@ export class AdFeesComponent implements OnInit {
     this.api.generateInvoices(this.genForm.month.trim(), this.genForm.due, this.genForm.cls, this.genForm.includeOneOff).subscribe({
       next: r => {
         this.saving = false;
-        // Unpriced classes are the one outcome worth interrupting for: nothing was billed for
-        // those students and the reason is fixable on the Fee Structure screen.
+        // Two outcomes are worth interrupting for, and they are fixed in different places:
+        // a class with no prices billed nobody, while a rider with no distance was billed
+        // for everything except their bus.
+        const lines: string[] = [`${r.created} invoice(s) generated.`, ''];
+        if (r.repeatChargesSkipped > 0) {
+          lines.push(`${r.repeatChargesSkipped} one-time/yearly charge(s) left off — those students had already been billed for them.`, '');
+        }
         if (r.unpricedClasses.length) {
-          alert(`${r.created} invoice(s) generated.
-
-No invoice for ${r.unpricedClasses.join(', ')} — those classes have no prices set. Add them under Fee Structure and run this again.`);
+          lines.push(`No invoice at all for ${r.unpricedClasses.join(', ')} — those classes have no prices set. Fix under Fee Structure.`, '');
+        }
+        if (r.transportSkipped?.length) {
+          // Capped in the message, not in the data: a long list scrolls an alert off the top of
+          // the screen, and the count is what tells the admin how much work is waiting.
+          lines.push('Billed without their transport charge:');
+          lines.push(...r.transportSkipped.slice(0, 10).map(t => `  ${t}`));
+          if (r.transportSkipped.length > 10) lines.push(`  …and ${r.transportSkipped.length - 10} more`);
+          lines.push('Fix under Transport Fee.', '');
+        }
+        if (r.unpricedClasses.length || r.transportSkipped?.length) {
+          alert(lines.join('\n'));
         } else {
-          this.showToast(r.created > 0
-            ? `${r.created} invoice(s) generated`
+          // Skipped repeats are not a problem to interrupt for — they are the rule working — so
+          // they ride along in the toast rather than raising a dialog of their own.
+          const repeats = r.repeatChargesSkipped > 0
+            ? ` · ${r.repeatChargesSkipped} repeat charge(s) skipped`
+            : '';
+          const topped = r.toppedUp > 0 ? ` · ${r.toppedUp} existing invoice(s) topped up` : '';
+          this.showToast(r.created > 0 || r.toppedUp > 0
+            ? `${r.created} invoice(s) generated${topped}${repeats}`
             : `No new invoices — ${r.alreadyBilled} student(s) already billed for ${this.genForm.month.trim()}`);
         }
         this.showGen = false;
@@ -479,7 +794,6 @@ interface PaperGroup {
   classLabel: string;
   papers: ExamPaperDto[];
   dateRange: string;
-  summary: string;
   totalMarks: number;
 }
 
@@ -500,13 +814,15 @@ interface PaperGroup {
             <thead><tr><th>Examination</th><th>Type</th><th>Dates</th><th>Classes</th><th class="num">Papers</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               @for (e of exams; track e.id) {
-                <tr [style.background]="e === selected ? 'var(--brand-tint)' : ''">
+                <tr class="row-pick" [class.on]="e === selected" tabindex="0"
+                    [attr.aria-selected]="e === selected"
+                    (click)="selectExam(e)" (keydown)="pickOnKey($event, e)">
                   <td class="td-main">{{ e.name }}</td>
                   <td>{{ e.type }}</td>
                   <td class="td-sub">{{ e.startDate | date:'mediumDate' }} → {{ e.endDate | date:'mediumDate' }}</td>
                   <td class="td-sub">{{ e.classes }}</td>
                   <td class="num">{{ e.paperCount }}</td>
-                  <td>
+                  <td (click)="$event.stopPropagation()">
                     <select class="select sm" [ngModel]="e.isManualStatus ? e.status : 'auto'"
                             (ngModelChange)="setExamStatus(e, $event)"
                             [class]="'select sm status-' + examBadge(e.status)">
@@ -519,9 +835,8 @@ interface PaperGroup {
                       <div class="td-sub">pinned · dates say {{ label(e.derivedStatus) }}</div>
                     }
                   </td>
-                  <td>
+                  <td (click)="$event.stopPropagation()">
                     <div class="row-actions">
-                      <button class="btn btn-ghost btn-sm" (click)="selectExam(e)">Papers</button>
                       <button class="btn btn-ghost btn-sm" (click)="editExam(e)">Edit</button>
                       <button class="icon-action danger" (click)="deleteExam(e)" title="Delete" aria-label="Delete">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
@@ -539,80 +854,44 @@ interface PaperGroup {
     @if (selected; as e) {
       <div class="card">
         <div class="card-head"><div class="grow"><h2>Subject Schedule — {{ e.name }}</h2></div><button class="btn btn-primary btn-sm" (click)="openPaper()" [disabled]="!classes.length">+ Add Subject</button></div>
-        <!-- One row per class: an exam covering several classes repeats the same five or six
-             subjects, and listing every paper made three timetables read as one long duplicate. -->
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Class</th><th class="num">Papers</th><th>Dates</th><th>Subjects</th><th class="num">Total marks</th><th>Actions</th></tr></thead>
-            <tbody>
-              @for (g of paperGroups(e); track g.classLabel) {
-                <tr>
-                  <td class="td-main">{{ g.classLabel }}</td>
-                  <td class="num">{{ g.papers.length }}</td>
-                  <td class="td-sub">{{ g.dateRange }}</td>
-                  <td class="td-sub">{{ g.summary }}</td>
-                  <td class="num">{{ g.totalMarks }}</td>
-                  <td>
-                    <div class="row-actions">
-                      <button class="btn btn-ghost btn-sm" (click)="viewingClass = g.classLabel">View</button>
-                      <button class="btn btn-ghost btn-sm" (click)="openPaper(g.classLabel)">+ Subject</button>
-                    </div>
-                  </td>
-                </tr>
-              } @empty { <tr><td colspan="6"><div class="empty">No papers yet — add subjects.</div></td></tr> }
-            </tbody>
-          </table>
-        </div>
-      </div>
-    }
-
-    <!-- One class's timetable for the exam -->
-    @if (viewingGroup; as g) {
-      <div class="modal-backdrop">
-        <div class="modal" style="max-width: 780px;">
-          <div class="modal-head">
-            <div class="grow">
-              <h2>{{ g.classLabel }} — {{ selected?.name }}</h2>
-              <div class="td-sub" style="margin-top:2px;">
-                {{ g.papers.length }} paper{{ g.papers.length === 1 ? '' : 's' }} ·
-                {{ g.dateRange }} · {{ g.totalMarks }} marks in total
+        <!-- Grouped by class rather than one flat list: an exam covering several classes
+             repeats the same five or six subjects, and running them together read as one
+             long duplicate. Every paper is on the page, so nothing needs opening to be seen. -->
+        @for (g of paperGroups(e); track g.classLabel) {
+          <div class="paper-group">
+            <div class="paper-group-head">
+              <div class="grow">
+                <h3>{{ g.classLabel }}</h3>
+                <div class="td-sub">
+                  {{ g.papers.length }} paper{{ g.papers.length === 1 ? '' : 's' }} ·
+                  {{ g.dateRange }} · {{ g.totalMarks }} marks in total
+                </div>
               </div>
+              <button class="btn btn-ghost btn-sm" (click)="openPaper(g.classLabel)">+ Subject</button>
             </div>
-            <button class="modal-close" (click)="viewingClass = null">✕</button>
-          </div>
-          <div class="modal-body">
-            <div class="table-wrap">
-              <table class="data-table">
-                <thead><tr><th>Date</th><th>Subject</th><th>Time</th><th>Room</th><th class="num">Full Marks</th><th>Actions</th></tr></thead>
-                <tbody>
-                  @for (p of g.papers; track p.id) {
-                    <tr>
-                      <td class="td-sub">{{ p.examDate | date:'mediumDate' }}<div class="td-sub">{{ dayName(p.examDate) }}</div></td>
-                      <td class="td-main">{{ p.subject }}</td>
-                      <td>{{ p.time || '—' }}</td>
-                      <td>{{ p.room || '—' }}</td>
-                      <td class="num">{{ p.fullMarks }}</td>
-                      <td>
-                        <button class="icon-action danger" (click)="removePaper(p)" title="Remove" aria-label="Remove">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-                        </button>
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
+            <ul class="paper-list">
+              @for (p of g.papers; track p.id) {
+                <li class="paper-item">
+                  <div class="paper-when">
+                    <span class="paper-date">{{ (p.examDate | date:'d MMM') || 'No date' }}</span>
+                    <span class="td-sub">{{ dayName(p.examDate) }}</span>
+                  </div>
+                  <div class="paper-subject">{{ p.subject }}</div>
+                  <div class="paper-where td-sub">{{ p.time || '—' }} · {{ p.room || 'Room TBC' }}</div>
+                  <div class="paper-marks num">{{ p.fullMarks }}</div>
+                  <button class="icon-action danger" (click)="removePaper(p)" title="Remove" [attr.aria-label]="'Remove ' + p.subject">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                  </button>
+                </li>
+              }
+            </ul>
             @if (clashDays(g).length) {
-              <div class="field-error" style="margin-top:10px;">
+              <div class="field-error paper-clash">
                 More than one paper on {{ clashDays(g).join(', ') }} — check whether that is intended.
               </div>
             }
           </div>
-          <div class="modal-foot">
-            <button class="btn btn-ghost" (click)="viewingClass = null">Close</button>
-            <button class="btn btn-primary" (click)="openPaper(g.classLabel)">+ Add Subject</button>
-          </div>
-        </div>
+        } @empty { <div class="empty">No papers yet — add subjects.</div> }
       </div>
     } @else { <div class="card"><div class="empty">Select an exam above to schedule its subjects.</div></div> }
 
@@ -730,12 +1009,28 @@ interface PaperGroup {
               </div>
               <div class="field">
                 <label>Subject <span class="req">*</span></label>
+                <!--
+                  Only the subjects the chosen class studies. A paper in a subject that is not on
+                  the class's curriculum has no teacher grid row, so nobody can ever be assigned
+                  to mark it — the server refuses it too, this just stops it being offered.
+                -->
                 <select class="select" [class.invalid]="err.has('subject')" [(ngModel)]="paperForm.subject"
-                        (ngModelChange)="err.clear('subject')">
-                  <option value="">Select subject…</option>
-                  @for (s of subjects; track s) { <option [value]="s">{{ s }}</option> }
+                        (ngModelChange)="err.clear('subject')" [disabled]="!paperForm.classLabel">
+                  <option value="">{{ paperForm.classLabel ? 'Select subject…' : 'Pick a class first…' }}</option>
+                  @for (s of subjectsForClass; track s) { <option [value]="s">{{ s }}</option> }
                 </select>
                 @if (err.has('subject')) { <div class="field-error">{{ err.get('subject') }}</div> }
+                @if (paperForm.classLabel && !subjectsForClass.length) {
+                  <div class="field-error">
+                    {{ paperForm.classLabel === ALL_CLASSES ? 'No class has' : paperForm.classLabel + ' has' }}
+                    any subjects yet. Set them under Classes &amp; Sections → Subjects &amp; Teachers.
+                  </div>
+                } @else if (paperForm.classLabel === ALL_CLASSES && paperForm.subject) {
+                  <div class="field-hint">
+                    Studied by {{ classesStudying(paperForm.subject).join(', ') }} — the other
+                    classes are skipped.
+                  </div>
+                }
               </div>
               <div class="field">
                 <label>Date <span class="req">*</span></label>
@@ -787,8 +1082,10 @@ export class AdExamsComponent implements OnInit {
   showPaper = false;
   /** Backs the Classes dropdown on the schedule form. */
   classes: string[] = [];
-  /** The school's own subjects, backing the Add Subject dropdown. */
+  /** The school's own subjects. Kept for the rest of the screen; the paper dialog narrows it. */
   subjects: string[] = [];
+  /** What each class studies this year — the list a paper's subject must come from. */
+  classSubjects: ClassSubjects[] = [];
   editingExamId: number | null = null;
   examForm = { name: '', type: 'Term', classes: 'All', start: '', end: '' };
   paperForm = { classLabel: '', subject: '', date: '', start: '08:00', end: '10:00', room: 'Hall A', full: 100 };
@@ -797,12 +1094,35 @@ export class AdExamsComponent implements OnInit {
   ngOnInit(): void {
     this.reload();
     this.api.getClasses().subscribe({ next: c => this.classes = c.map(x => x.name), error: () => {} });
-    this.api.getSubjects().subscribe({
-      // Default the form to the first real subject rather than a hardcoded "English".
-      next: s => { this.subjects = s; this.paperForm.subject = s[0] ?? ''; },
-      error: () => {},
-    });
+    this.api.getSubjects().subscribe({ next: s => this.subjects = s, error: () => {} });
+    // What each class is allowed to be examined in. Without it the dialog would offer every
+    // subject in the school and the server would reject half the picks.
+    this.api.getSubjectsByClass().subscribe({ next: c => this.classSubjects = c, error: () => {} });
   }
+  /**
+   * The subjects offered for the class currently chosen. For "All classes" it is the union, since
+   * the server schedules each class that studies the subject and skips the rest.
+   */
+  get subjectsForClass(): string[] {
+    const chosen = this.paperForm.classLabel;
+    if (!chosen) return [];
+    if (chosen === this.ALL_CLASSES) {
+      const union = new Set<string>();
+      for (const c of this.classSubjects) {
+        if (this.paperClasses.includes(c.className)) c.subjects.forEach(s => union.add(s));
+      }
+      return [...union].sort();
+    }
+    return this.classSubjects.find(c => c.className === chosen)?.subjects ?? [];
+  }
+
+  /** Which of the exam's classes actually study a subject — shown under an "All classes" pick. */
+  classesStudying(subject: string): string[] {
+    return this.classSubjects
+      .filter(c => this.paperClasses.includes(c.className) && c.subjects.includes(subject))
+      .map(c => c.className);
+  }
+
   reload(): void {
     this.api.getExams().subscribe({
       next: e => {
@@ -841,6 +1161,13 @@ export class AdExamsComponent implements OnInit {
   get allApproved(): boolean { return this.approvals.length > 0 && this.approvedCount === this.approvals.length; }
 
   selectExam(e: ExamDto): void { this.selected = e; this.loadApprovals(); }
+
+  /** Enter or Space on a focused row picks it, the way the click does. */
+  pickOnKey(ev: KeyboardEvent, e: ExamDto): void {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    ev.preventDefault();          // Space would otherwise scroll the page.
+    this.selectExam(e);
+  }
 
   private loadApprovals(): void {
     const id = this.selected?.id;
@@ -918,16 +1245,6 @@ export class AdExamsComponent implements OnInit {
   }
 
   /**
-   * The class whose timetable is open in the View dialog, or null when closed. Held as a name
-   * rather than the group object so it re-derives after a paper is deleted and the exam reloads.
-   */
-  viewingClass: string | null = null;
-  get viewingGroup(): PaperGroup | null {
-    if (!this.viewingClass || !this.selected) return null;
-    return this.paperGroups(this.selected).find(g => g.classLabel === this.viewingClass) ?? null;
-  }
-
-  /**
    * Papers grouped into one row per class, each already sorted into that class's own timetable.
    * An exam covering several classes repeats the same subjects, so a flat list of every paper
    * reads as duplicates on the same day.
@@ -942,12 +1259,9 @@ export class AdExamsComponent implements OnInit {
       .map(([classLabel, papers]) => {
         papers.sort((a, b) => (a.examDate ?? '').localeCompare(b.examDate ?? '') || a.subject.localeCompare(b.subject));
         const dates = papers.map(p => p.examDate).filter((d): d is string => !!d).sort();
-        const names = papers.map(p => p.subject);
         return {
           classLabel, papers,
           dateRange: this.rangeLabel(dates),
-          // Four names then a count: enough to recognise the set without wrapping the row.
-          summary: names.length <= 4 ? names.join(', ') : names.slice(0, 4).join(', ') + ` +${names.length - 4}`,
           totalMarks: papers.reduce((n, p) => n + p.fullMarks, 0),
         };
       })
@@ -1021,6 +1335,13 @@ export class AdExamsComponent implements OnInit {
         this.showPaper = false;
         // Naming the classes that were skipped matters: the run partly succeeded, and a bare
         // "Subject added" would hide that some classes already had it.
+        if (r.notTaught.length) {
+          // Said out loud rather than folded into the toast: a class silently missing from an
+          // exam is found weeks later, when someone goes to enter its marks.
+          alert(`${this.paperForm.subject} scheduled for ${r.scheduled.join(', ') || 'no classes'}.
+
+Skipped ${r.notTaught.join(', ')} — not on their curriculum. Add the subject under Classes & Sections → Subjects & Teachers, then schedule it again.`);
+        } else
         this.showToast(r.alreadyScheduled.length
           ? `${this.paperForm.subject} scheduled for ${r.scheduled.join(', ')} · already on ${r.alreadyScheduled.join(', ')}`
           : `${this.paperForm.subject} scheduled for ${r.scheduled.join(', ')}`);

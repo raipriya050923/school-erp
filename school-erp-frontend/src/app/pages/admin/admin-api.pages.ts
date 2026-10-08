@@ -1,23 +1,49 @@
 import { Component, OnInit, inject } from '@angular/core';
-import { DecimalPipe, DatePipe } from '@angular/common';
+import { DecimalPipe, DatePipe, TitleCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import {
   AdminApiService, adminApiError, statusLabel, statusBadge,
-  AdminDashboard, StudentListItem, StudentDetail, SaveStudent,
+  AdminDashboard, Paged, StudentListItem, StudentDetail, SaveStudent, LoginSummary,
   TeacherListItem, TeacherDetail, SaveTeacher, ClassDto, SectionDto, NoticeDto,
   ClassCurriculum, ClassSubjectOption, AssignmentRow, AssignmentCell,
-  CreateStudentResult, CreateTeacherResult,
+  CreateStudentResult, CreateTeacherResult, StudentImportResult,
+  ParentAccount, CreateParentLogin, GeneratedCredentials,
 } from '../../core/admin-api.service';
 import { AutocompleteComponent } from '../../shared/autocomplete.component';
 import { DigitsOnlyDirective } from '../../shared/digits-only.directive';
 import { FieldErrors, isValidPhone, isValidPincode, isValidEmail } from '../../shared/field-errors';
 import { GeoPickerComponent, GeoValue } from '../../shared/geo-picker.component';
 import { CredentialsDialogComponent } from '../../shared/credentials-dialog.component';
+import { ResetPasswordDialogComponent } from '../../shared/reset-password-dialog.component';
 import { AuthService } from '../../core/auth.service';
 import { currentMonthRange } from './admin-txn.pages';
 import { IconComponent } from '../../shared/icon.component';
 import { TrendChartComponent, DonutChartComponent, TrendPoint, DonutSlice } from '../../shared/charts.component';
+
+/**
+ * Whether a teacher takes the subject. Checks the whole list, falling back to splitting the
+ * joined summary for a teacher saved before subjects became a list — matching only the single
+ * `subject` field meant a Science teacher could never be offered for Computer Science.
+ */
+function takesSubject(t: TeacherListItem, subject: string): boolean {
+  const want = subject.trim().toLowerCase();
+  const list = t.subjects?.length
+    ? t.subjects
+    : (t.subject ?? '').split(',').map(x => x.trim()).filter(Boolean);
+  return list.some(x => x.toLowerCase() === want);
+}
+
+/** Hands a blob to the browser as a download. */
+function saveBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  // Revoked on the next tick: revoking synchronously can beat the click in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url));
+}
 
 /* =====================  DASHBOARD  ===================== */
 
@@ -35,6 +61,45 @@ import { TrendChartComponent, DonutChartComponent, TrendPoint, DonutSlice } from
     @if (loading) { <div class="card"><div class="empty">Loading…</div></div> }
     @else if (error) { <div class="card"><div class="empty">{{ error }}</div></div> }
     @else if (d) {
+      <!-- Subscription notice. Shown only when there is something to act on:
+           inside the last week of the term, or once the seat allowance is full. -->
+      @if (d.subscription; as sub) {
+        @if (sub.isExpiringSoon) {
+          <div class="sub-banner warn">
+            <app-icon name="bell" [size]="20" />
+            <div class="grow">
+              <b>
+                @if (sub.daysRemaining === 0) { Your {{ sub.isTrial ? 'trial' : 'subscription' }} ends today. }
+                @else { {{ sub.isTrial ? 'Trial' : 'Subscription' }} ends in {{ sub.daysRemaining }}
+                  day{{ sub.daysRemaining === 1 ? '' : 's' }}. }
+              </b>
+              Service will be suspended on {{ sub.endDate | date:'mediumDate' }} and nobody at your
+              school will be able to sign in. Contact your platform administrator to renew
+              {{ sub.planName ? 'the ' + sub.planName + ' plan' : '' }}.
+            </div>
+          </div>
+        }
+        @if (sub.atStudentCap) {
+          <div class="sub-banner crit">
+            <app-icon name="users" [size]="20" />
+            <div class="grow">
+              <b>Student limit reached.</b>
+              The {{ sub.planName }} plan allows {{ sub.maxStudents | number }} students and you have
+              {{ sub.studentCount | number }}. New admissions are blocked until the plan is upgraded.
+            </div>
+          </div>
+        } @else if (sub.maxStudents && sub.seatsRemaining !== null && sub.seatsRemaining <= 20) {
+          <div class="sub-banner warn">
+            <app-icon name="users" [size]="20" />
+            <div class="grow">
+              <b>{{ sub.seatsRemaining }} student place{{ sub.seatsRemaining === 1 ? '' : 's' }} left
+                on the {{ sub.planName }} plan.</b>
+              {{ sub.studentCount | number }} of {{ sub.maxStudents | number }} used.
+            </div>
+          </div>
+        }
+      }
+
       <!-- Headline figures -->
       <div class="metric-grid">
         <div class="metric-card">
@@ -213,10 +278,11 @@ export class AdDashboardComponent implements OnInit {
 @Component({
   selector: 'app-ad-students',
   standalone: true,
-  imports: [FormsModule, DecimalPipe, DatePipe, AutocompleteComponent, CredentialsDialogComponent, GeoPickerComponent, DigitsOnlyDirective],
+  imports: [FormsModule, DecimalPipe, DatePipe, TitleCasePipe, AutocompleteComponent, CredentialsDialogComponent, ResetPasswordDialogComponent, GeoPickerComponent, DigitsOnlyDirective],
   template: `
     <div class="page-head">
-      <div class="grow"><h1>Student Management</h1><div class="page-sub">{{ displayed.length }} of {{ students.length }} students</div></div>
+      <div class="grow"><h1>Student Management</h1><div class="page-sub">{{ total | number }} {{ total === 1 ? 'student' : 'students' }}@if (filtered) { <span> matching your filters</span> }</div></div>
+      <button class="btn btn-ghost" (click)="openImport()">Import from Excel</button>
       <button class="btn btn-primary" (click)="openForm()">+ New Admission</button>
     </div>
 
@@ -237,7 +303,7 @@ export class AdDashboardComponent implements OnInit {
           <table class="data-table">
             <thead><tr><th>Student</th><th>Class</th><th>Roll</th><th>Guardian</th><th class="num">Fee Due</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              @for (s of displayed; track s.id) {
+              @for (s of students; track s.id) {
                 <tr>
                   <td><div class="td-main">{{ s.name }}</div><div class="td-sub">{{ s.admissionNo }}</div></td>
                   <td>{{ s.className }}@if (s.sectionName) {-{{ s.sectionName }}}</td>
@@ -249,6 +315,8 @@ export class AdDashboardComponent implements OnInit {
                     <div class="row-actions">
                       <button class="icon-action primary" (click)="view(s.id)" title="View"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
                       <button class="icon-action primary" (click)="edit(s.id)" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+                      <button class="icon-action primary" (click)="openParent(s)" title="Parent login"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></button>
+                      <button class="icon-action primary" (click)="openReset(s)" title="Reset portal password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2"/><path d="m16.5 6.5 3 3"/></svg></button>
                       @if (s.status === 'inactive') {
                         <button class="icon-action success" (click)="setStatus(s, 'active')" title="Reactivate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></button>
                       } @else {
@@ -261,6 +329,42 @@ export class AdDashboardComponent implements OnInit {
             </tbody>
           </table>
         </div>
+
+        <!--
+          Drawn whenever there are students, not only past the first page: the row count and the
+          page-size control are as much a part of it as the arrows, and a table that grows a
+          footer only after 26 admissions reads as a layout bug.
+        -->
+        @if (total > 0) {
+          <div class="table-pager">
+            <span class="pager-count">
+              Showing {{ firstShown | number }}–{{ lastShown | number }} of {{ total | number }}
+              {{ total === 1 ? 'student' : 'students' }}
+            </span>
+            <div class="grow"></div>
+            <label>
+              Rows
+              <select class="pager-size" [ngModel]="pageSize" (ngModelChange)="setPageSize($event)">
+                @for (n of pageSizes; track n) { <option [ngValue]="n">{{ n }}</option> }
+              </select>
+            </label>
+            @if (totalPages > 1) {
+              <div class="pager-pages">
+                <button class="pager-btn" [disabled]="page === 1" (click)="goTo(page - 1)"
+                        title="Previous page" aria-label="Previous page">‹</button>
+                @for (n of pageNumbers; track $index) {
+                  @if (n === null) { <span class="pager-gap">…</span> }
+                  @else {
+                    <button class="pager-btn" [class.active]="n === page" [disabled]="n === page"
+                            [attr.aria-current]="n === page ? 'page' : null" (click)="goTo(n)">{{ n }}</button>
+                  }
+                }
+                <button class="pager-btn" [disabled]="page === totalPages" (click)="goTo(page + 1)"
+                        title="Next page" aria-label="Next page">›</button>
+              </div>
+            }
+          </div>
+        }
       }
     </div>
 
@@ -279,6 +383,8 @@ export class AdDashboardComponent implements OnInit {
             <div class="kv-row"><span class="kv-label">Address</span><span class="kv-value">{{ s.address || '—' }}</span></div>
             <div class="kv-row"><span class="kv-label">City / State</span><span class="kv-value">{{ s.city || '—' }} {{ s.state ? ', ' + s.state : '' }}</span></div>
             <div class="kv-row"><span class="kv-label">Pincode</span><span class="kv-value">{{ s.pincode || '—' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Previous school</span><span class="kv-value">{{ s.previousSchool || '—' }}</span></div>
+            <div class="kv-row"><span class="kv-label">TC no</span><span class="kv-value">{{ s.tcNo || '—' }}</span></div>
             <div class="kv-row"><span class="kv-label">Fee due</span><span class="kv-value">{{ s.feeDue > 0 ? '₹' + (s.feeDue | number) : 'Cleared' }}</span></div>
             <div class="kv-row"><span class="kv-label">Status</span><span class="kv-value"><span class="badge" [class]="'badge ' + badge(s.status)">{{ label(s.status) }}</span></span></div>
           </div>
@@ -289,7 +395,7 @@ export class AdDashboardComponent implements OnInit {
 
     @if (showForm) {
       <div class="modal-backdrop">
-        <div class="modal">
+        <div class="modal wide">
           <div class="modal-head"><h2>{{ editingId ? 'Edit Student' : 'New Admission' }}</h2><button class="modal-close" (click)="showForm = false">✕</button></div>
           <div class="modal-body">
             <div class="form-row">
@@ -363,6 +469,25 @@ export class AdDashboardComponent implements OnInit {
               </div>
               <div class="field"></div>
             </div>
+            <!--
+              Where the student came from. A school will not normally admit a transfer without
+              the TC, and the number is what the office quotes when chasing the previous school
+              for it — so the two belong on one line.
+            -->
+            <div class="form-row">
+              <div class="field">
+                <label>Previous school</label>
+                <input class="input" [(ngModel)]="form.previousSchool"
+                       placeholder="Leave blank for a first admission" />
+              </div>
+              <div class="field">
+                <label>TC no</label>
+                <input class="input" [class.invalid]="err.has('tcNo')" [(ngModel)]="form.tcNo"
+                       (ngModelChange)="err.clear('tcNo')" placeholder="From the transfer certificate" />
+                @if (err.has('tcNo')) { <div class="field-error">{{ err.get('tcNo') }}</div> }
+              </div>
+            </div>
+
             <div class="form-row">
               <div class="field">
                 <label>Guardian name <span class="req">*</span></label>
@@ -388,6 +513,210 @@ export class AdDashboardComponent implements OnInit {
       </div>
     }
 
+    <!--
+      Bulk admission. Rows are reported one by one rather than the file failing on the first bad
+      one: a class list with two typos should admit the rest and name the two.
+    -->
+    @if (showImport) {
+      <div class="modal-backdrop">
+        <div class="modal" style="max-width: 820px;">
+          <div class="modal-head">
+            <div class="grow">
+              <h2>Import Students</h2>
+              <div class="td-sub" style="margin-top:2px;">From an Excel (.xlsx) or CSV file</div>
+            </div>
+            <button class="modal-close" (click)="closeImport()">✕</button>
+          </div>
+          <div class="modal-body">
+            @if (!importResult || importResult.created === 0) {
+              <ol class="import-steps">
+                <li>
+                  Download the sample file — it already lists your own classes and sections.
+                  <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
+                          (click)="downloadTemplate()" [disabled]="downloading">
+                    {{ downloading ? 'Preparing…' : 'Download sample .xlsx' }}
+                  </button>
+                </li>
+                <li>Fill one row per student. Columns marked <span class="req">*</span> are required.</li>
+                <li>Upload it here. Nothing is saved until you press Import.</li>
+              </ol>
+
+              <div class="field">
+                <label>File <span class="req">*</span></label>
+                <input class="input" type="file" accept=".xlsx,.csv"
+                       (change)="pickFile($event)" [class.invalid]="!!importError" />
+                @if (importFile) {
+                  <div class="field-hint">{{ importFile.name }} · {{ (importFile.size / 1024) | number:'1.0-0' }} KB</div>
+                }
+                @if (importError) { <div class="field-error">{{ importError }}</div> }
+              </div>
+            }
+
+            @if (importResult; as r) {
+              <div class="import-tally">
+                <span class="badge success">{{ r.created }} admitted</span>
+                @if (r.skipped) { <span class="badge info">{{ r.skipped }} ready</span> }
+                @if (r.failed) { <span class="badge danger">{{ r.failed }} rejected</span> }
+                <span class="td-sub">of {{ r.totalRows }} rows</span>
+                @if (r.created > 0) {
+                  <div class="grow"></div>
+                  <button class="btn btn-primary btn-sm" (click)="downloadCredentials()">Download logins (.csv)</button>
+                }
+              </div>
+
+              @if (r.created > 0) {
+                <div class="field-error" style="margin-bottom:8px;">
+                  Each password below is shown once and cannot be retrieved again — save the file
+                  before closing this dialog.
+                </div>
+              }
+
+              <div class="table-wrap" style="max-height:320px;overflow:auto;">
+                <table class="data-table">
+                  <thead><tr><th class="num">Row</th><th>Student</th><th>Result</th><th>Login</th></tr></thead>
+                  <tbody>
+                    @for (row of r.rows; track row.row) {
+                      <tr>
+                        <td class="num td-sub">{{ row.row }}</td>
+                        <td class="td-main">{{ row.name || '—' }}</td>
+                        <td>
+                          <span class="badge" [class]="'badge ' + importBadge(row.status)">{{ importLabel(row.status) }}</span>
+                          @if (row.message) { <div class="td-sub">{{ row.message }}</div> }
+                          @if (row.admissionNo) { <div class="td-sub">{{ row.admissionNo }} · roll {{ row.rollNo }}</div> }
+                        </td>
+                        <td class="td-sub">
+                          @if (row.username) { {{ row.username }}<div>{{ row.temporaryPassword }}</div> }
+                          @else { — }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-ghost" (click)="closeImport()">{{ importResult?.created ? 'Done' : 'Cancel' }}</button>
+            @if (!importResult || importResult.created === 0) {
+              <button class="btn btn-ghost" (click)="runImport(true)" [disabled]="!importFile || importing">
+                {{ importing ? 'Checking…' : 'Check file' }}
+              </button>
+              <button class="btn btn-primary" (click)="runImport(false)" [disabled]="!importFile || importing">
+                {{ importing ? 'Importing…' : 'Import' }}
+              </button>
+            }
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Parent login: shows the existing account, or a short form to issue one. -->
+    @if (parentFor; as st) {
+      <div class="modal-backdrop" (click)="closeParent()"></div>
+      <div class="modal" style="max-width:520px;">
+        <div class="modal-head">
+          <h2>Parent login</h2>
+          <button class="icon-btn" (click)="closeParent()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="td-sub" style="margin-bottom:14px;">
+            For {{ st.name }} · {{ st.className }}@if (st.sectionName) {-{{ st.sectionName }}}
+          </div>
+
+          @if (parentLoading) { <div class="empty">Loading…</div> }
+          @else if (parent?.hasLogin) {
+            <div class="notice-box">
+              <b>{{ parent!.name }}</b> already signs in as <code>{{ parent!.username }}</code>.
+              <div class="td-sub" style="margin-top:6px;">
+                {{ parent!.relation | titlecase }} · {{ parent!.phone }}
+                @if (parent!.email) { · {{ parent!.email }} }
+              </div>
+              <div class="td-sub" style="margin-top:8px;">
+                A second account is not issued for the same guardian. Use Forgot password
+                if they cannot get in.
+              </div>
+            </div>
+          } @else {
+            <div class="form-row">
+              <div class="field">
+                <label>First name <span class="req">*</span></label>
+                <input class="input" [class.invalid]="perr.has('firstName')" [(ngModel)]="pform.firstName"
+                       (ngModelChange)="perr.clear('firstName')" placeholder="e.g. Lakpa" />
+                @if (perr.has('firstName')) { <div class="field-error">{{ perr.get('firstName') }}</div> }
+              </div>
+              <div class="field">
+                <label>Last name</label>
+                <input class="input" [(ngModel)]="pform.lastName" placeholder="e.g. Tamang" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label>Relation <span class="req">*</span></label>
+                <select class="select" [(ngModel)]="pform.relation">
+                  <option value="father">Father</option>
+                  <option value="mother">Mother</option>
+                  <option value="guardian">Guardian</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Phone <span class="req">*</span></label>
+                <input class="input" [class.invalid]="perr.has('phone')" [value]="pform.phone"
+                       (input)="onPhone($event)" maxlength="10" inputmode="numeric" placeholder="10 digits" />
+                @if (perr.has('phone')) { <div class="field-error">{{ perr.get('phone') }}</div> }
+              </div>
+            </div>
+            <div class="field">
+              <label>Email <span class="td-sub" style="font-weight:500;">(optional)</span></label>
+              <input class="input" [class.invalid]="perr.has('email')" [(ngModel)]="pform.email"
+                     (ngModelChange)="perr.clear('email')" placeholder="parent@example.com" />
+              @if (perr.has('email')) { <div class="field-error">{{ perr.get('email') }}</div> }
+              <div class="field-hint">Used for password reset. Leave blank for a username-only account.</div>
+            </div>
+            @if (parentError) { <div class="field-error" style="margin-top:8px;">{{ parentError }}</div> }
+          }
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" (click)="closeParent()">Close</button>
+          @if (!parentLoading && !parent?.hasLogin) {
+            <button class="btn btn-primary" (click)="createParent()" [disabled]="parentSaving">
+              {{ parentSaving ? 'Creating…' : 'Create login' }}
+            </button>
+          }
+        </div>
+      </div>
+    }
+
+    @if (resetTarget) {
+      <app-reset-password-dialog
+        [who]="resetTarget.name" role="student"
+        [username]="resetLogin?.username ?? null" [note]="resetNote"
+        [saving]="resetting"
+        (confirmed)="doReset($event)" (cancelled)="closeReset()" />
+    }
+
+    @if (resetDone; as c) {
+      <app-credentials-dialog
+        title="Password reset"
+        [fullName]="c.fullName"
+        [username]="c.username"
+        [password]="c.temporaryPassword"
+        [email]="c.email"
+        (copied)="showToast($event)"
+        (closed)="resetDone = null" />
+    }
+
+    @if (parentCreated; as c) {
+      <app-credentials-dialog
+        title="Parent login created"
+        [fullName]="c.fullName"
+        [username]="c.username"
+        [password]="c.temporaryPassword"
+        [email]="c.email"
+        (copied)="showToast($event)"
+        (closed)="parentCreated = null" />
+    }
+
     @if (admitted; as r) {
       <app-credentials-dialog
         title="Student admitted"
@@ -402,6 +731,10 @@ export class AdDashboardComponent implements OnInit {
 
     @if (toast) { <div class="toast success">{{ toast }}</div> }
   `,
+  styles: [`
+    .import-steps { margin: 0 0 14px; padding-left: 20px; font-size: 13px; line-height: 1.9; }
+    .import-tally { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  `],
 })
 export class AdStudentsComponent implements OnInit {
   private readonly api = inject(AdminApiService);
@@ -420,6 +753,12 @@ export class AdStudentsComponent implements OnInit {
   toDate = currentMonthRange().to;
   appliedFrom = '';
   appliedTo = '';
+  /** Where the pager currently sits. Every one of these is decided by the server. */
+  page = 1;
+  pageSize = 25;
+  total = 0;
+  totalPages = 1;
+  readonly pageSizes = [10, 25, 50, 100];
   showForm = false;
   saving = false;
   formError = '';
@@ -431,6 +770,33 @@ export class AdStudentsComponent implements OnInit {
   viewing: StudentDetail | null = null;
   /** Held only until the admin dismisses the dialog — never persisted anywhere. */
   admitted: CreateStudentResult | null = null;
+
+  /* ---- parent login ---- */
+  /** The student whose parent dialog is open, or null. */
+  parentFor: StudentListItem | null = null;
+
+  /** The student whose password is being reset, and what is known about their login. */
+  resetTarget: StudentListItem | null = null;
+  resetLogin: LoginSummary | null = null;
+  resetting = false;
+  resetDone: GeneratedCredentials | null = null;
+  parent: ParentAccount | null = null;
+  parentLoading = false;
+  parentSaving = false;
+  parentError = '';
+  /** Same one-dialog lifetime as `admitted`: it carries a plaintext password. */
+  parentCreated: GeneratedCredentials | null = null;
+  readonly perr = new FieldErrors();
+  pform: CreateParentLogin = { relation: 'guardian', firstName: '', lastName: '', phone: '', email: '' };
+
+  /* ---- bulk import ---- */
+  showImport = false;
+  importFile: File | null = null;
+  importing = false;
+  downloading = false;
+  importError = '';
+  /** Also held only for the life of the dialog: it carries plaintext passwords. */
+  importResult: StudentImportResult | null = null;
   toast = '';
   form = this.empty();
   label = statusLabel;
@@ -499,20 +865,72 @@ export class AdStudentsComponent implements OnInit {
     });
   }
 
-  /** Client-side admission-date filter on top of the server search. */
-  get displayed(): StudentListItem[] {
-    return this.students.filter(s => {
-      const d = (s.admissionDate ?? '').slice(0, 10);
-      if (this.appliedFrom && (!d || d < this.appliedFrom)) return false;
-      if (this.appliedTo && (!d || d > this.appliedTo)) return false;
-      return true;
-    });
+  /** Whether the count in the header is describing a filtered result or the whole roster. */
+  get filtered(): boolean { return !!(this.q.trim() || this.cls.trim() || this.appliedFrom || this.appliedTo); }
+
+  get firstShown(): number { return this.total === 0 ? 0 : (this.page - 1) * this.pageSize + 1; }
+  get lastShown(): number { return Math.min(this.page * this.pageSize, this.total); }
+
+  /**
+   * First page, last page and a window around the current one — `null` marks a gap. Same rule as
+   * the geography pager, so the two read as one control rather than two designs.
+   */
+  get pageNumbers(): (number | null)[] {
+    const last = this.totalPages;
+    const cur = this.page;
+    if (last <= 7) return Array.from({ length: last }, (_, i) => i + 1);
+
+    const out: (number | null)[] = [1];
+    const from = Math.max(2, cur - 1);
+    const to = Math.min(last - 1, cur + 1);
+    if (from > 2) out.push(null);
+    for (let p = from; p <= to; p++) out.push(p);
+    if (to < last - 1) out.push(null);
+    out.push(last);
+    return out;
   }
-  search(): void { this.appliedFrom = this.fromDate; this.appliedTo = this.toDate; this.reload(); }
+
+  /** Applying a filter re-reads from page one: page 4 of the old result means nothing now. */
+  search(): void { this.appliedFrom = this.fromDate; this.appliedTo = this.toDate; this.page = 1; this.reload(); }
+
+  goTo(page: number): void {
+    const target = Math.min(Math.max(1, page), this.totalPages);
+    if (target === this.page) return;
+    this.page = target;
+    this.reload();
+    // The pager sits below the fold on a full page; without this the next page arrives with the
+    // reader still looking at its last rows.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /** Keeps the first row on screen where it was, rather than jumping back to the top of the roster. */
+  setPageSize(n: number): void {
+    const first = (this.page - 1) * this.pageSize;
+    this.pageSize = n;
+    this.page = Math.floor(first / n) + 1;
+    this.reload();
+  }
+
   reload(): void {
     this.loading = this.students.length === 0;
-    this.api.getStudents(this.q.trim() || undefined, this.cls.trim() || undefined).subscribe({
-      next: r => { this.students = r; this.loading = false; this.error = ''; },
+    this.api.getStudents({
+      search: this.q.trim() || undefined,
+      className: this.cls.trim() || undefined,
+      admittedFrom: this.appliedFrom || undefined,
+      admittedTo: this.appliedTo || undefined,
+      page: this.page,
+      pageSize: this.pageSize,
+    }).subscribe({
+      next: (r: Paged<StudentListItem>) => {
+        this.students = r.items;
+        // Taken from the response rather than assumed: the server moves a caller back when the
+        // page it asked for no longer exists.
+        this.page = r.page;
+        this.total = r.total;
+        this.totalPages = r.totalPages;
+        this.loading = false;
+        this.error = '';
+      },
       error: e => { this.error = adminApiError(e); this.loading = false; },
     });
   }
@@ -522,6 +940,7 @@ export class AdStudentsComponent implements OnInit {
     this.fromDate = currentMonthRange().from;
     this.toDate = currentMonthRange().to;
     this.appliedFrom = ''; this.appliedTo = '';
+    this.page = 1;
     this.reload();
   }
   openForm(): void {
@@ -538,7 +957,7 @@ export class AdStudentsComponent implements OnInit {
     this.api.getStudent(id).subscribe({
       next: s => {
         this.editingId = id;
-        this.form = { firstName: s.firstName, lastName: s.lastName, className: s.className ?? '', sectionName: s.sectionName ?? '', rollNo: s.rollNo ?? '', gender: s.gender ?? 'male', dob: s.dob?.slice(0,10) ?? '', bloodGroup: s.bloodGroup ?? '', email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', state: s.state ?? '', pincode: s.pincode ?? '', guardianName: s.guardianName ?? '', guardianPhone: s.guardianPhone ?? '', stateId: s.stateId, cityId: s.cityId };
+        this.form = { firstName: s.firstName, lastName: s.lastName, className: s.className ?? '', sectionName: s.sectionName ?? '', rollNo: s.rollNo ?? '', gender: s.gender ?? 'male', dob: s.dob?.slice(0,10) ?? '', bloodGroup: s.bloodGroup ?? '', email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', state: s.state ?? '', pincode: s.pincode ?? '', previousSchool: s.previousSchool ?? '', tcNo: s.tcNo ?? '', guardianName: s.guardianName ?? '', guardianPhone: s.guardianPhone ?? '', stateId: s.stateId, cityId: s.cityId };
         this.formError = ''; this.err.reset(); this.showForm = true;
       },
       error: e => alert(adminApiError(e)),
@@ -554,7 +973,7 @@ export class AdStudentsComponent implements OnInit {
     if (this.editingId) this.api.updateStudent(this.editingId, dto).subscribe({ next: () => done('Student updated'), error: fail });
     else this.api.createStudent(dto).subscribe({
       // The generated password only exists in this response, so raise the dialog before anything else.
-      next: r => { this.admitted = r; done('Student admitted'); },
+      next: r => { this.admitted = r; this.page = 1; done('Student admitted'); },
       error: fail,
     });
   }
@@ -573,9 +992,184 @@ export class AdStudentsComponent implements OnInit {
     if (this.err.require('guardianPhone', this.form.guardianPhone, 'Guardian phone is required.'))
       this.err.check('guardianPhone', isValidPhone(this.form.guardianPhone), 'Enter a 10-digit phone number.');
     this.err.check('pincode', isValidPincode(this.form.pincode), 'Pincode must be 6 digits.');
+    // A TC number is a reference copied off a printed certificate — letters, digits, dashes
+    // and slashes. Anything else is a mis-keyed paste rather than a real number.
+    this.err.check('tcNo', TC_NO.test((this.form.tcNo ?? '').trim()),
+      'Use only letters, numbers, dashes and slashes.');
     if (this.form.dob)
       this.err.check('dob', this.form.dob <= this.today, 'Date of birth cannot be in the future.');
     return !this.err.any;
+  }
+
+  openImport(): void {
+    this.showImport = true;
+    this.importFile = null;
+    this.importError = '';
+    this.importResult = null;
+  }
+
+  closeImport(): void {
+    // Reloading only when something was actually admitted keeps a cancelled dialog from
+    // flickering the list for no reason.
+    const admitted = (this.importResult?.created ?? 0) > 0;
+    this.showImport = false;
+    this.importResult = null;
+    this.importFile = null;
+    // Back to the first page for the same reason a single admission goes there: the newest rows
+    // are at the top, and an import is only worth confirming if it can be seen.
+    if (admitted) { this.page = 1; this.reload(); }
+  }
+
+  pickFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.importFile = input.files?.[0] ?? null;
+    this.importError = '';
+    this.importResult = null;
+  }
+
+  /* ---- parent login ---- */
+
+  /** A note under the name in the dialog, including the case where there is no login at all. */
+  get resetNote(): string | null {
+    if (!this.resetLogin) return 'Checking the login for this student…';
+    if (!this.resetLogin.hasLogin) return 'This student has no portal login yet — nothing to reset.';
+    return this.resetLogin.lastPasswordChangeNote;
+  }
+
+  openReset(s: StudentListItem): void {
+    this.resetTarget = s;
+    // Asked for rather than assumed: a student admitted before logins were issued has none, and
+    // the dialog should say so instead of failing on the button press.
+    this.resetLogin = null;
+    this.api.studentLogin(s.id).subscribe({
+      next: r => this.resetLogin = r,
+      error: e => { alert(adminApiError(e)); this.closeReset(); },
+    });
+  }
+
+  closeReset(): void { this.resetTarget = null; this.resetLogin = null; this.resetting = false; }
+
+  doReset(password: string | null): void {
+    const s = this.resetTarget;
+    if (!s) return;
+    this.resetting = true;
+    this.api.resetStudentPassword(s.id, password).subscribe({
+      next: c => { this.resetting = false; this.closeReset(); this.resetDone = c; },
+      error: e => { this.resetting = false; alert(adminApiError(e)); },
+    });
+  }
+
+  openParent(s: StudentListItem): void {
+    this.parentFor = s;
+    this.parent = null;
+    this.parentError = '';
+    this.perr.reset();
+    this.parentLoading = true;
+    // Prefill from the guardian already on the student, so the usual case is
+    // open-and-confirm rather than retyping what the school already holds.
+    this.pform = this.parentForm(s.guardianName, s.guardianPhone, 'guardian', '');
+    this.api.getParentAccount(s.id).subscribe({
+      next: p => {
+        this.parent = p;
+        this.parentLoading = false;
+        // A guardian row on file is better data than the student's free-text copy.
+        if (p && !p.hasLogin) this.pform = this.parentForm(p.name, p.phone, p.relation, p.email ?? '');
+      },
+      error: e => { this.parentLoading = false; this.parentError = adminApiError(e); },
+    });
+  }
+
+  private parentForm(name: string | null, phone: string | null, relation: string, email: string): CreateParentLogin {
+    const parts = (name ?? '').trim().split(' ').filter(Boolean);
+    return {
+      relation,
+      firstName: parts[0] ?? '',
+      lastName: parts.slice(1).join(' '),
+      phone: (phone ?? '').replace(/[^0-9]/g, '').slice(0, 10),
+      email,
+    };
+  }
+
+  closeParent(): void { this.parentFor = null; this.parent = null; this.parentError = ''; }
+
+  /** Digits only, written straight to the element so a rejected key cannot stick. */
+  onPhone(ev: Event): void {
+    const el = ev.target as HTMLInputElement;
+    const digits = el.value.replace(/[^0-9]/g, '').slice(0, 10);
+    el.value = digits;
+    this.pform.phone = digits;
+    this.perr.clear('phone');
+  }
+
+  createParent(): void {
+    this.perr.reset();
+    if (!this.pform.firstName?.trim()) this.perr.set('firstName', 'First name is required.');
+    if ((this.pform.phone ?? '').length !== 10) this.perr.set('phone', 'Enter a 10-digit phone number.');
+    if (this.pform.email && !isValidEmail(this.pform.email)) this.perr.set('email', 'Enter a valid email address.');
+    if (this.perr.any || !this.parentFor) return;
+
+    this.parentSaving = true;
+    this.parentError = '';
+    this.api.createParentLogin(this.parentFor.id, this.pform).subscribe({
+      next: c => {
+        this.parentSaving = false;
+        this.closeParent();
+        this.parentCreated = c;   // the password is shown once, here, and never stored
+      },
+      error: e => { this.parentSaving = false; this.parentError = adminApiError(e); },
+    });
+  }
+
+  downloadTemplate(): void {
+    this.downloading = true;
+    this.api.studentImportTemplate().subscribe({
+      next: blob => { this.downloading = false; saveBlob(blob, 'student-import-template.xlsx'); },
+      error: e => { this.downloading = false; this.importError = adminApiError(e); },
+    });
+  }
+
+  /** `check` validates without writing, so an admin can see what would happen first. */
+  runImport(check: boolean): void {
+    if (!this.importFile) return;
+    this.importing = true;
+    this.importError = '';
+    this.api.importStudents(this.importFile, check).subscribe({
+      next: r => {
+        this.importing = false;
+        this.importResult = r;
+        if (r.created > 0) this.showToast(`${r.created} student(s) admitted`);
+      },
+      error: e => { this.importing = false; this.importError = adminApiError(e); },
+    });
+  }
+
+  /**
+   * The passwords in the response exist nowhere else, so the admin needs a copy before the
+   * dialog closes. CSV rather than a screenshot of the table.
+   */
+  downloadCredentials(): void {
+    const rows = (this.importResult?.rows ?? []).filter(r => r.username);
+    if (!rows.length) return;
+    const esc = (v: unknown) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const lines = [['Student', 'Admission No', 'Roll No', 'Username', 'Temporary Password'].map(esc).join(',')];
+    for (const r of rows)
+      lines.push([r.name, r.admissionNo, r.rollNo, r.username, r.temporaryPassword].map(esc).join(','));
+    saveBlob(new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }), 'student-logins.csv');
+  }
+
+  importBadge(status: string): string {
+    switch (status) {
+      case 'created': return 'success';
+      case 'skipped': return 'info';
+      default: return 'danger';
+    }
+  }
+  importLabel(status: string): string {
+    switch (status) {
+      case 'created': return 'Admitted';
+      case 'skipped': return 'Ready';
+      default: return 'Rejected';
+    }
   }
 
   deactivate(s: StudentListItem): void {
@@ -597,8 +1191,11 @@ export class AdStudentsComponent implements OnInit {
     this.form.state = v.state;
     this.form.city = v.city;
   }
-  private empty(): SaveStudent { return { firstName: '', lastName: '', className: '', sectionName: '', rollNo: '', gender: 'male', dob: '', bloodGroup: '', email: '', address: '', city: '', state: '', pincode: '', guardianName: '', guardianPhone: '', stateId: null, cityId: null }; }
+  private empty(): SaveStudent { return { firstName: '', lastName: '', className: '', sectionName: '', rollNo: '', gender: 'male', dob: '', bloodGroup: '', email: '', address: '', city: '', state: '', pincode: '', previousSchool: '', tcNo: '', guardianName: '', guardianPhone: '', stateId: null, cityId: null }; }
 }
+
+/** What a transfer certificate number may contain. Empty is fine — most students have none. */
+const TC_NO = /^[A-Za-z0-9 ./\\-]*$/;
 
 /* =====================  TEACHERS  ===================== */
 
@@ -611,7 +1208,7 @@ interface QualificationRow { name: string; institution: string; completionYear: 
 @Component({
   selector: 'app-ad-teachers',
   standalone: true,
-  imports: [FormsModule, DatePipe, CredentialsDialogComponent, GeoPickerComponent, AutocompleteComponent, DigitsOnlyDirective],
+  imports: [FormsModule, DatePipe, CredentialsDialogComponent, ResetPasswordDialogComponent, GeoPickerComponent, AutocompleteComponent, DigitsOnlyDirective],
   template: `
     <div class="page-head">
       <div class="grow"><h1>Teacher Management</h1><div class="page-sub">{{ displayed.length }} of {{ teachers.length }} teaching staff</div></div>
@@ -648,6 +1245,7 @@ interface QualificationRow { name: string; institution: string; completionYear: 
                     <div class="row-actions">
                       <button class="icon-action primary" (click)="view(t.id)" title="View"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
                       <button class="icon-action primary" (click)="edit(t.id)" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+                      <button class="icon-action primary" (click)="openReset(t)" title="Reset portal password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2"/><path d="m16.5 6.5 3 3"/></svg></button>
                       @if (t.status === 'inactive') {
                         <button class="icon-action success" (click)="setStatus(t, 'active')" title="Reactivate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></button>
                       } @else {
@@ -669,7 +1267,13 @@ interface QualificationRow { name: string; institution: string; completionYear: 
           <div class="modal-head"><h2>{{ t.name }}</h2><button class="modal-close" (click)="viewing = null">✕</button></div>
           <div class="modal-body">
             <div class="kv-row"><span class="kv-label">Employee code</span><span class="kv-value">{{ t.employeeCode }}</span></div>
-            <div class="kv-row"><span class="kv-label">Subject</span><span class="kv-value">{{ t.subject }}</span></div>
+            <div class="kv-row">
+              <span class="kv-label">Subjects</span>
+              <span class="kv-value">
+                @for (s of t.subjects; track s) { <span class="badge info" style="margin:0 4px 4px 0;">{{ s }}</span> }
+                @if (!t.subjects.length) { {{ t.subject || '—' }} }
+              </span>
+            </div>
             <div class="kv-row"><span class="kv-label">Phone</span><span class="kv-value">{{ t.phone }}</span></div>
             <div class="kv-row"><span class="kv-label">Email</span><span class="kv-value">{{ t.email || '—' }}</span></div>
             <div class="kv-row">
@@ -696,7 +1300,7 @@ interface QualificationRow { name: string; institution: string; completionYear: 
 
     @if (showForm) {
       <div class="modal-backdrop">
-        <div class="modal">
+        <div class="modal wide">
           <div class="modal-head"><h2>{{ editingId ? 'Edit Teacher' : 'Add Teacher' }}</h2><button class="modal-close" (click)="showForm = false">✕</button></div>
           <div class="modal-body">
             <div class="form-row">
@@ -715,14 +1319,24 @@ interface QualificationRow { name: string; institution: string; completionYear: 
             </div>
             <div class="form-row">
               <div class="field">
-                <label>Subject <span class="req">*</span></label>
-                <app-autocomplete [options]="subjects" [value]="form.subject ?? ''"
-                                  [invalid]="err.has('subject')"
-                                  [placeholder]="subjects.length ? 'Search subject…' : 'No subjects yet'"
-                                  emptyHint="No subjects yet — add them under Subjects."
-                                  noMatchHint="Create this subject under Subjects first."
-                                  (valueChange)="onSubjectChange($event)" />
+                <label>Subjects taught <span class="req">*</span></label>
+                @if (subjects.length) {
+                  <div class="chip-picker" [class.invalid-box]="err.has('subject')">
+                    @for (s of subjects; track s) {
+                      <label class="pick-chip" [class.on]="teaches(s)">
+                        <input type="checkbox" [checked]="teaches(s)" (change)="toggleSubject(s)" />
+                        {{ s }}
+                      </label>
+                    }
+                  </div>
+                } @else {
+                  <div class="empty" style="padding:10px;">No subjects yet — add them under Subjects.</div>
+                }
                 @if (err.has('subject')) { <div class="field-error">{{ err.get('subject') }}</div> }
+                <div class="field-hint">
+                  Tick every subject this teacher takes. They will be offered for each of them under
+                  Classes &amp; Sections → Subjects &amp; Teachers.
+                </div>
               </div>
               <div class="field"><label>Email</label>
                 <input class="input" type="email" [class.invalid]="err.has('email')" [(ngModel)]="form.email"
@@ -734,34 +1348,57 @@ interface QualificationRow { name: string; institution: string; completionYear: 
             <!-- A degree on its own says little; who awarded it and when is what an admin verifies. -->
             <div class="field">
               <label>Qualifications</label>
-              @for (q of quals; track $index) {
-                <div class="qual-row">
-                  <div class="field">
-                    @if ($first) { <label class="qual-head">Qualification <span class="req">*</span></label> }
-                    <input class="input" [class.invalid]="err.has('qual' + $index)" [(ngModel)]="q.name"
-                           (ngModelChange)="err.clear('qual' + $index)" placeholder="e.g. M.A. English" />
-                    @if (err.has('qual' + $index)) { <div class="field-error">{{ err.get('qual' + $index) }}</div> }
+              <div class="qual-list">
+                @if (quals.length) {
+                  <div class="qual-row qual-labels" aria-hidden="true">
+                    <span class="qual-no"></span>
+                    <span>Qualification <span class="req">*</span></span>
+                    <span>University / board</span>
+                    <span class="qual-year">Year</span>
+                    <span class="qual-remove"></span>
                   </div>
-                  <div class="field">
-                    @if ($first) { <label class="qual-head">University / board</label> }
-                    <input class="input" [(ngModel)]="q.institution" placeholder="e.g. Delhi University" />
+                }
+                @for (q of quals; track $index) {
+                  <div class="qual-row">
+                    <span class="qual-no">{{ $index + 1 }}</span>
+                    <div class="field">
+                      <input class="input" [class.invalid]="err.has('qual' + $index)" [(ngModel)]="q.name"
+                             (ngModelChange)="err.clear('qual' + $index)" placeholder="e.g. M.A. English" />
+                      @if (err.has('qual' + $index)) { <div class="field-error">{{ err.get('qual' + $index) }}</div> }
+                    </div>
+                    <div class="field">
+                      <input class="input" [(ngModel)]="q.institution" placeholder="e.g. Delhi University" />
+                    </div>
+                    <div class="field qual-year">
+                      <input class="input" appDigitsOnly="4" [class.invalid]="err.has('qualYear' + $index)"
+                             [(ngModel)]="q.completionYear" (ngModelChange)="err.clear('qualYear' + $index)"
+                             placeholder="2015" />
+                      @if (err.has('qualYear' + $index)) { <div class="field-error">{{ err.get('qualYear' + $index) }}</div> }
+                    </div>
+                    <button type="button" class="icon-action danger qual-remove" (click)="removeQual($index)"
+                            [attr.aria-label]="'Remove qualification ' + ($index + 1)" title="Remove"
+                            [disabled]="quals.length === 1 && !quals[0].name && !quals[0].institution && !quals[0].completionYear">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+                    </button>
                   </div>
-                  <div class="field qual-year">
-                    @if ($first) { <label class="qual-head">Year</label> }
-                    <input class="input" appDigitsOnly="4" [class.invalid]="err.has('qualYear' + $index)"
-                           [(ngModel)]="q.completionYear" (ngModelChange)="err.clear('qualYear' + $index)"
-                           placeholder="2015" />
-                    @if (err.has('qualYear' + $index)) { <div class="field-error">{{ err.get('qualYear' + $index) }}</div> }
-                  </div>
-                  <button type="button" class="icon-action danger qual-remove" (click)="removeQual($index)"
-                          [attr.aria-label]="'Remove qualification ' + ($index + 1)" title="Remove">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+                } @empty {
+                  <div class="field-hint" style="padding:4px 0;">None recorded yet.</div>
+                }
+
+                <!-- Right-aligned and small: adding a row is an occasional action, so it sits
+                     out of the way rather than spanning the group like another input. -->
+                <div class="add-row-bar">
+                  @if (quals.length) { <span class="add-row-count">{{ quals.length }} added</span> }
+                  <button type="button" class="add-row" (click)="addQual()" [disabled]="quals.length >= 20"
+                          [title]="quals.length >= 20 ? 'That is as many qualifications as we store.' : 'Add another qualification'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Add
                   </button>
                 </div>
-              } @empty {
-                <div class="field-hint">None recorded yet.</div>
-              }
-              <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" (click)="addQual()">+ Add qualification</button>
+              </div>
+              @if (err.has('quals')) { <div class="field-error">{{ err.get('quals') }}</div> }
               <div class="field-hint">Add as many as apply — B.Ed, M.A., NET and so on. Only the name is required.</div>
             </div>
             <div class="form-row">
@@ -805,6 +1442,25 @@ interface QualificationRow { name: string; institution: string; completionYear: 
       </div>
     }
 
+    @if (resetTarget) {
+      <app-reset-password-dialog
+        [who]="resetTarget.name" role="teacher"
+        [username]="resetLogin?.username ?? null" [note]="resetNote"
+        [saving]="resetting"
+        (confirmed)="doReset($event)" (cancelled)="closeReset()" />
+    }
+
+    @if (resetDone; as c) {
+      <app-credentials-dialog
+        title="Password reset"
+        [fullName]="c.fullName"
+        [username]="c.username"
+        [password]="c.temporaryPassword"
+        [email]="c.email"
+        (copied)="showToast($event)"
+        (closed)="resetDone = null" />
+    }
+
     @if (registered; as r) {
       <app-credentials-dialog
         title="Teacher registered"
@@ -838,10 +1494,18 @@ export class AdTeachersComponent implements OnInit {
   viewing: TeacherDetail | null = null;
   /** Held only until the admin dismisses the dialog — never persisted anywhere. */
   registered: CreateTeacherResult | null = null;
+
+  /** The teacher whose password is being reset, and what is known about their login. */
+  resetTarget: TeacherListItem | null = null;
+  resetLogin: LoginSummary | null = null;
+  resetting = false;
+  resetDone: GeneratedCredentials | null = null;
   toast = '';
   form = this.empty();
-  /** The school's subject list, backing the subject autocomplete. */
+  /** The school's subject list, backing the subject picker. */
   subjects: string[] = [];
+  /** The subjects this teacher takes. A teacher commonly takes more than one. */
+  chosenSubjects: string[] = [];
   /** Per-field messages, so a rejection lands under the box it concerns. */
   readonly err = new FieldErrors();
   readonly today = new Date().toISOString().slice(0, 10);
@@ -885,6 +1549,7 @@ export class AdTeachersComponent implements OnInit {
     this.form = this.empty();
     // One blank row so the repeater reads as something to fill in rather than an empty space.
     this.quals = [this.emptyQual()];
+    this.chosenSubjects = [];
     this.formError = '';
     this.err.reset();
     this.showForm = true;
@@ -908,8 +1573,14 @@ export class AdTeachersComponent implements OnInit {
     return [q.institution, q.completionYear].filter(Boolean).join(', ');
   }
 
-  onSubjectChange(value: string): void {
-    this.form.subject = value;
+  teaches(subject: string): boolean {
+    return this.chosenSubjects.some(x => x.toLowerCase() === subject.toLowerCase());
+  }
+
+  toggleSubject(subject: string): void {
+    const i = this.chosenSubjects.findIndex(x => x.toLowerCase() === subject.toLowerCase());
+    if (i >= 0) this.chosenSubjects.splice(i, 1);
+    else this.chosenSubjects.push(subject);
     this.err.clear('subject');
   }
 
@@ -919,11 +1590,7 @@ export class AdTeachersComponent implements OnInit {
     this.err.clear('quals');
   }
 
-  /** True once the typed subject matches one on the school's subject list. */
-  private subjectExists(): boolean {
-    const typed = (this.form.subject ?? '').trim().toLowerCase();
-    return this.subjects.some(x => x.toLowerCase() === typed);
-  }
+
   edit(id: number): void {
     this.api.getTeacher(id).subscribe({
       next: t => {
@@ -933,6 +1600,10 @@ export class AdTeachersComponent implements OnInit {
           name: q.name, institution: q.institution ?? '', completionYear: q.completionYear?.toString() ?? '',
         }));
         if (!this.quals.length) this.quals = [this.emptyQual()];
+        // Falls back to splitting the summary for a teacher saved before subjects became a list.
+        this.chosenSubjects = t.subjects?.length
+          ? [...t.subjects]
+          : (t.subject ?? '').split(',').map(x => x.trim()).filter(Boolean);
         this.formError = '';
         this.err.reset();
         this.showForm = true;
@@ -946,11 +1617,7 @@ export class AdTeachersComponent implements OnInit {
     this.err.reset();
     this.err.require('firstName', this.form.firstName, 'First name is required.');
     this.err.require('lastName', this.form.lastName, 'Last name is required.');
-    if (this.err.require('subject', this.form.subject, 'Subject is required.'))
-      // The subject must come from the school's list; a free-typed one would never match a class
-      // subject or an exam paper.
-      this.err.check('subject', this.subjectExists(),
-        `“${(this.form.subject ?? '').trim()}” is not on your subject list — create it under Subjects first.`);
+    this.err.check('subject', this.chosenSubjects.length > 0, 'Pick at least one subject this teacher takes.');
     if (this.err.require('phone', this.form.phone, 'Phone is required.'))
       this.err.check('phone', isValidPhone(this.form.phone), 'Enter a 10-digit phone number.');
     this.err.require('gender', this.form.gender, 'Gender is required.');
@@ -984,6 +1651,9 @@ export class AdTeachersComponent implements OnInit {
     this.saving = true;
     const dto: SaveTeacher = {
       ...this.form, dob: this.form.dob || null,
+      subjects: [...this.chosenSubjects],
+      // Kept in step for anything still reading the single field.
+      subject: this.chosenSubjects[0] ?? '',
       // Blank rows are the repeater's own scaffolding, not data.
       qualifications: this.quals.filter(q => q.name.trim()).map(q => ({
         name: q.name.trim(),
@@ -1004,6 +1674,36 @@ export class AdTeachersComponent implements OnInit {
     if (!confirm(`Deactivate ${t.name}?`)) return;
     this.setStatus(t, 'inactive');
   }
+  /** A note under the name in the dialog, including the case where there is no login at all. */
+  get resetNote(): string | null {
+    if (!this.resetLogin) return 'Checking the login for this teacher…';
+    if (!this.resetLogin.hasLogin) return 'This teacher has no portal login yet — nothing to reset.';
+    return this.resetLogin.lastPasswordChangeNote;
+  }
+
+  openReset(t: TeacherListItem): void {
+    this.resetTarget = t;
+    // Asked for rather than assumed: a staff member added before logins were issued has none,
+    // and the dialog should say so instead of failing on the button press.
+    this.resetLogin = null;
+    this.api.teacherLogin(t.id).subscribe({
+      next: r => this.resetLogin = r,
+      error: e => { alert(adminApiError(e)); this.closeReset(); },
+    });
+  }
+
+  closeReset(): void { this.resetTarget = null; this.resetLogin = null; this.resetting = false; }
+
+  doReset(password: string | null): void {
+    const t = this.resetTarget;
+    if (!t) return;
+    this.resetting = true;
+    this.api.resetTeacherPassword(t.id, password).subscribe({
+      next: c => { this.resetting = false; this.closeReset(); this.resetDone = c; },
+      error: e => { this.resetting = false; alert(adminApiError(e)); },
+    });
+  }
+
   setStatus(t: TeacherListItem, status: string): void {
     this.api.setTeacherStatus(t.id, status).subscribe({ next: () => { this.showToast(`${t.name} → ${statusLabel(status)}`); this.reload(); }, error: e => alert(adminApiError(e)) });
   }
@@ -1114,14 +1814,9 @@ export class AdTeachersComponent implements OnInit {
 
             <div class="card-head" style="padding:14px 0 10px;border-bottom:1px solid var(--border);">
               <h2 class="grow">Subject teachers</h2>
-              @if (subjectTeachersDisabled) {
-                <span class="td-sub">disabled for now</span>
-              } @else {
-                <span class="td-sub">one teacher per subject, per section</span>
-              }
+              <span class="td-sub">one teacher per subject, per section</span>
               @if (assignedCount > 0) {
-                <button class="btn btn-ghost btn-sm danger" (click)="clearAssignments()"
-                        [disabled]="clearing || subjectTeachersDisabled">
+                <button class="btn btn-ghost btn-sm danger" (click)="clearAssignments()" [disabled]="clearing">
                   {{ clearing ? 'Clearing…' : 'Unassign all (' + assignedCount + ')' }}
                 </button>
               }
@@ -1130,10 +1825,7 @@ export class AdTeachersComponent implements OnInit {
             @if (!cur.grid.length) {
               <div class="empty">Pick the subjects above first, then assign a teacher to each.</div>
             } @else {
-              <!-- Only the opacity is applied here: pointer-events:none would
-                   also kill the horizontal scroll needed to reach later
-                   sections. The selects carry the actual disabled state. -->
-              <div class="table-wrap" [style.opacity]="subjectTeachersDisabled ? 0.6 : 1">
+              <div class="table-wrap">
                 <table class="data-table sticky-first">
                   <thead>
                     <tr>
@@ -1148,7 +1840,6 @@ export class AdTeachersComponent implements OnInit {
                         @for (cell of row.sections; track cell.sectionId) {
                           <td>
                             <select class="select sm" [ngModel]="cell.staffId"
-                                    [disabled]="subjectTeachersDisabled"
                                     (ngModelChange)="assign(row, cell, $event)">
                               <option [ngValue]="null">— Unassigned —</option>
                               @if (teachersFor(row.subjectName).length) {
@@ -1175,12 +1866,13 @@ export class AdTeachersComponent implements OnInit {
                   </tbody>
                 </table>
               </div>
+              <!--
+                Worth stating here: without an entry in this grid the subject teacher sees
+                nothing on Marks Entry, so an exam cannot be marked at all until it is filled in.
+              -->
               <div class="field-hint" style="margin-top:10px;">
-                @if (subjectTeachersDisabled) {
-                  Subject-teacher assignment is switched off for now. The grid is shown read-only.
-                } @else {
-                  Changes save as you pick. The class teacher stays on the section itself — this grid is who teaches what.
-                }
+                Changes save as you pick. The class teacher stays on the section itself — this
+                grid is who teaches what, and it is what lets a teacher enter marks for a subject.
               </div>
             }
             @if (assignError) { <div class="field-error">{{ assignError }}</div> }
@@ -1300,13 +1992,6 @@ export class AdClassesComponent implements OnInit {
   editingSection: SectionDto | null = null;
   clsForm = { name: '', section: 'A', teacher: '' };
   secForm = { classId: 0, name: '', teacher: '' };
-  /**
-   * Greys out the subject-teacher grid and stops it accepting input. The grid
-   * still renders, so existing assignments stay visible — set this back to
-   * false to make it editable again.
-   */
-  readonly subjectTeachersDisabled = true;
-
   /** Open "Subjects & Teachers" dialog, or null when closed. */
   curriculum: ClassCurriculum | null = null;
   subjectsDirty = false;
@@ -1324,9 +2009,9 @@ export class AdClassesComponent implements OnInit {
    * Matched on name because the teacher form stores the subject as free text rather than
    * a reference to the subjects master.
    */
+  /** Teachers who take this subject. Matched against their whole subject list. */
   teachersFor(subject: string): TeacherListItem[] {
-    const s = subject.trim().toLowerCase();
-    return this.activeTeachers.filter(t => (t.subject ?? '').trim().toLowerCase() === s);
+    return this.activeTeachers.filter(t => takesSubject(t, subject));
   }
 
   /**
@@ -1334,8 +2019,7 @@ export class AdClassesComponent implements OnInit {
    * recorded as teaching would have an empty dropdown and could never be assigned.
    */
   otherTeachers(subject: string): TeacherListItem[] {
-    const s = subject.trim().toLowerCase();
-    return this.activeTeachers.filter(t => (t.subject ?? '').trim().toLowerCase() !== s);
+    return this.activeTeachers.filter(t => !takesSubject(t, subject));
   }
 
   /**

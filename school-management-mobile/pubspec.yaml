@@ -1,5 +1,5 @@
 name: school_management_mobile
-description: "School Portal — student mobile app for timetable, attendance, results, assignments and fees. Static demo data, no backend."
+description: "पाठशाला — student mobile app for timetable, attendance, results, homework and fees. Backed by the SchoolErp API."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

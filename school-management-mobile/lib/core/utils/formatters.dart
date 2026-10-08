@@ -1,5 +1,3 @@
-import '../../data/static_data.dart';
-
 /// Small formatting helpers. Kept dependency-free so the app builds offline
 /// without pulling `intl`.
 class Format {
@@ -18,9 +16,13 @@ class Format {
     return negative ? '-$out' : out.toString();
   }
 
-  /// `6650` -> `$6,650`
-  static String money(num value) =>
-      '${SchoolData.currencySymbol}${thousands(value)}';
+  /// The school's currency symbol. Every school in the system is on NPR, and
+  /// this used to be a dollar sign carried over from the demo data — a fee of
+  /// Rs 12,000 was being shown to parents as $12,000.
+  static const String currencySymbol = 'Rs ';
+
+  /// `6650` -> `Rs 6,650`
+  static String money(num value) => '$currencySymbol${thousands(value)}';
 
   /// `87.4` -> `87.4%`, `88.0` -> `88%`
   static String percent(double value, {int decimals = 1}) {

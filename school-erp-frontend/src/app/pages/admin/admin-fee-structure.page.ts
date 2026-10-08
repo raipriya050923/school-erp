@@ -5,6 +5,7 @@ import {
   AdminApiService, adminApiError, AcademicYearDto,
   FeeHeadDto, SaveFeeHead, FeeStructureGrid, FeeStructureCell,
 } from '../../core/admin-api.service';
+import { RouterLink } from '@angular/router';
 import { FieldErrors } from '../../shared/field-errors';
 
 /**
@@ -19,7 +20,7 @@ import { FieldErrors } from '../../shared/field-errors';
 @Component({
   selector: 'app-ad-fee-structure',
   standalone: true,
-  imports: [FormsModule, DecimalPipe],
+  imports: [FormsModule, DecimalPipe, RouterLink],
   template: `
     <div class="page-head">
       <div class="grow">
@@ -60,7 +61,9 @@ import { FieldErrors } from '../../shared/field-errors';
               <tr>
                 <th>Class</th>
                 @for (h of activeHeads; track h.id) {
-                  <th class="num">{{ h.name }}<div class="td-sub">{{ freqLabel(h.frequency) }}</div></th>
+                  <th class="num">{{ h.name }}<div class="td-sub">
+                    {{ freqLabel(h.frequency) }}@if (byDistance(h)) { · by distance }
+                  </div></th>
                 }
                 <th class="num">Monthly invoice</th>
               </tr>
@@ -71,10 +74,19 @@ import { FieldErrors } from '../../shared/field-errors';
                   <td class="td-main">{{ c.className }}</td>
                   @for (h of activeHeads; track h.id) {
                     <td class="num">
-                      <input class="input sm num" type="number" min="0" step="100"
-                             [ngModel]="amount(c.classId, h.id)"
-                             (ngModelChange)="setAmount(c.classId, h.id, $event)"
-                             [class.dirty]="isDirty(c.classId, h.id)" placeholder="—" />
+                      @if (byDistance(h)) {
+                        <!--
+                          Deliberately not an input. One number here would bill the child across
+                          the road the same as the child twelve kilometres out, which is the whole
+                          reason this head was moved off the grid.
+                        -->
+                        <a class="per-student" routerLink="/admin/transport">Per student →</a>
+                      } @else {
+                        <input class="input sm num" type="number" min="0" step="100"
+                               [ngModel]="amount(c.classId, h.id)"
+                               (ngModelChange)="setAmount(c.classId, h.id, $event)"
+                               [class.dirty]="isDirty(c.classId, h.id)" placeholder="—" />
+                      }
                     </td>
                   }
                   <td class="num"><strong>₹{{ monthlyTotal(c.classId) | number }}</strong></td>
@@ -87,6 +99,11 @@ import { FieldErrors } from '../../shared/field-errors';
           Blank or 0 means the class is not billed for that head. The Monthly invoice column adds up
           the monthly heads only — yearly and one-time heads are billed when you tick
           “include yearly &amp; one-time charges” on Generate Invoices.
+          @if (hasDistanceHead) {
+            A head marked <b>by distance</b> is priced per student on
+            <a routerLink="/admin/transport">Transport Fee</a>, so it is not included in the
+            class total above — what each student pays depends on how far they live.
+          }
         </div>
       }
     </div>
@@ -95,12 +112,16 @@ import { FieldErrors } from '../../shared/field-errors';
       <div class="card-head"><h2 class="grow">Fee heads</h2></div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Head</th><th>Billed</th><th>Description</th><th class="num">Classes priced</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Head</th><th>Billed</th><th>Priced by</th><th>Description</th><th class="num">Classes priced</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             @for (h of heads; track h.id) {
               <tr>
                 <td class="td-main">{{ h.name }}</td>
                 <td>{{ freqLabel(h.frequency) }}</td>
+                <td>
+                  @if (byDistance(h)) { <span class="badge neutral">Student distance</span> }
+                  @else { <span class="td-sub">Class</span> }
+                </td>
                 <td class="td-sub">{{ h.description || '—' }}</td>
                 <td class="num">{{ h.inUse }}</td>
                 <td><span class="badge" [class]="h.isActive ? 'badge success' : 'badge neutral'">{{ h.isActive ? 'Active' : 'Retired' }}</span></td>
@@ -115,7 +136,7 @@ import { FieldErrors } from '../../shared/field-errors';
                   </div>
                 </td>
               </tr>
-            } @empty { <tr><td colspan="6"><div class="empty">No fee heads yet.</div></td></tr> }
+            } @empty { <tr><td colspan="7"><div class="empty">No fee heads yet.</div></td></tr> }
           </tbody>
         </table>
       </div>
@@ -141,6 +162,16 @@ import { FieldErrors } from '../../shared/field-errors';
                 <option value="one_time">One-time</option>
               </select>
               <div class="field-hint">Only monthly heads go on every monthly invoice.</div>
+            </div>
+            <div class="field"><label>Priced by</label>
+              <select class="select" [(ngModel)]="headForm.pricingMode">
+                <option value="class">Class — one amount for everyone in the class</option>
+                <option value="distance">Per student (distance) — from how far they live</option>
+              </select>
+              <div class="field-hint">
+                Choose distance for a bus or van charge; its amounts are then set on the
+                Transport Fee screen, and this head's column here becomes read-only.
+              </div>
             </div>
             <div class="field"><label>Description</label><input class="input" [(ngModel)]="headForm.description" placeholder="Shown on the invoice breakdown" /></div>
             <label class="check"><input type="checkbox" [(ngModel)]="headForm.isRefundable" /> Refundable deposit</label>
@@ -182,8 +213,9 @@ import { FieldErrors } from '../../shared/field-errors';
   `,
   styles: [`
     .input.sm.num { width: 108px; text-align: right; padding: 6px 8px; }
-    .input.dirty { border-color: var(--accent, #2563eb); background: color-mix(in srgb, var(--accent, #2563eb) 6%, transparent); }
+    .input.dirty { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, transparent); }
     .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 4px; }
+    .per-student { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
   `],
 })
 export class AdFeeStructureComponent implements OnInit {
@@ -265,10 +297,18 @@ export class AdFeeStructureComponent implements OnInit {
 
   isDirty(classId: number, headId: number): boolean { return this.edits.has(this.key(classId, headId)); }
 
-  /** Live monthly total, counting unsaved edits so the number tracks what is being typed. */
+  /** A head whose amount comes from the student, not from this grid. */
+  byDistance(h: FeeHeadDto): boolean { return h.pricingMode === 'distance'; }
+  get hasDistanceHead(): boolean { return this.activeHeads.some(h => this.byDistance(h)); }
+
+  /**
+   * Live monthly total, counting unsaved edits so the number tracks what is being typed.
+   * Distance-priced heads are left out: they differ per student, so there is no honest number
+   * to add here — the Transport Fee screen totals them instead.
+   */
   monthlyTotal(classId: number): number {
     return this.activeHeads
-      .filter(h => h.frequency === 'monthly')
+      .filter(h => h.frequency === 'monthly' && !this.byDistance(h))
       .reduce((sum, h) => sum + (this.amount(classId, h.id) ?? 0), 0);
   }
 
@@ -290,7 +330,10 @@ export class AdFeeStructureComponent implements OnInit {
   openHead(h?: FeeHeadDto): void {
     this.editingHeadId = h?.id ?? null;
     this.headForm = h
-      ? { name: h.name, description: h.description ?? '', frequency: h.frequency, isRefundable: h.isRefundable }
+      ? {
+          name: h.name, description: h.description ?? '', frequency: h.frequency,
+          pricingMode: h.pricingMode, isRefundable: h.isRefundable,
+        }
       : this.emptyHead();
     this.headError = '';
     this.err.reset();
@@ -356,5 +399,7 @@ export class AdFeeStructureComponent implements OnInit {
   }
 
   private showToast(m: string): void { this.toast = m; clearTimeout(this.timer); this.timer = setTimeout(() => this.toast = '', 3000); }
-  private emptyHead(): SaveFeeHead { return { name: '', description: '', frequency: 'monthly', isRefundable: false }; }
+  private emptyHead(): SaveFeeHead {
+    return { name: '', description: '', frequency: 'monthly', pricingMode: 'class', isRefundable: false };
+  }
 }

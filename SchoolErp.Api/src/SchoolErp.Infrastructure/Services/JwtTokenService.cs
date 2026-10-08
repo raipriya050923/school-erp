@@ -34,6 +34,8 @@ public class JwtTokenService : ITokenService
         if (identity.SchoolId is { } school) claims.Add(new Claim(ErpClaims.SchoolId, school.ToString()));
         if (identity.StaffId is { } staff) claims.Add(new Claim(ErpClaims.StaffId, staff.ToString()));
         if (identity.StudentId is { } student) claims.Add(new Claim(ErpClaims.StudentId, student.ToString()));
+        // Only added when true, so an ordinary token carries nothing extra.
+        if (identity.MustChangePassword) claims.Add(new Claim(ErpClaims.MustChangePassword, "1"));
 
         var credentials = new SigningCredentials(_options.SigningKey, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(

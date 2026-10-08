@@ -2,14 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>EduNexus — School ERP</title>
+  <title>पाठशाला — Complete School ERP &amp; Management Platform</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101828">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!--
+    SVG first so the mark stays crisp at any size and follows the browser's own scaling;
+    the .ico carries 16/32/48px rasters for browsers that ignore SVG icons.
+  -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/x-icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!--
+    Noto Sans Devanagari carries the पाठशाला wordmark. Inter has no Devanagari
+    coverage, so without this the brand falls back to whatever each OS happens to
+    ship - Nirmala UI on Windows, Noto on Android, Devanagari MT on iOS - and the
+    logo looks like a different logo on every device.
+  -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <app-root></app-root>

@@ -1,5 +1,7 @@
 using SchoolErp.Application.Common;
 using SchoolErp.Application.DTOs.Transactional;
+using SchoolErp.Application.DTOs.Billing;
+using SchoolErp.Application.Services;
 using SchoolErp.Application.Interfaces.Persistence;
 using SchoolErp.Application.Interfaces.Services;
 using SchoolErp.Domain.Entities;
@@ -64,12 +66,15 @@ public class AdminExamService : IAdminExamService
 {
     private readonly IExamRepository _repo;
     private readonly IExamResultRepository _results;
+    private readonly ICurriculumService _curriculum;
     private readonly ICurrentSchool _school;
 
-    public AdminExamService(IExamRepository repo, IExamResultRepository results, ICurrentSchool school)
+    public AdminExamService(IExamRepository repo, IExamResultRepository results,
+        ICurriculumService curriculum, ICurrentSchool school)
     {
         _repo = repo;
         _results = results;
+        _curriculum = curriculum;
         _school = school;
     }
 
@@ -174,10 +179,29 @@ public class AdminExamService : IAdminExamService
             throw new ValidationException("Class is required — a paper is scheduled for one class.");
 
         var subject = dto.Subject.Trim();
+
+        // A paper can only be set in a subject the class actually studies. Without this a school
+        // could schedule, say, Hindi for a class whose curriculum has no Hindi — and then find
+        // the paper unmarkable, because the teacher grid has no row to assign anyone to. The
+        // curriculum is per academic year, which is why this reads the current year's lists.
+        var taught = (await _curriculum.SubjectsByClassAsync(ct))
+            .ToDictionary(c => c.ClassName, c => c.Subjects, StringComparer.OrdinalIgnoreCase);
+
         var scheduled = new List<string>();
         var already = new List<string>();
+        var notTaught = new List<string>();
         foreach (var classLabel in classes)
         {
+            // A label that is not a class in Classes and Sections has no curriculum to check, and
+            // no students will match it either — exam papers and students are matched by the same
+            // label, so a paper filed under a name the master does not know can never be marked.
+            if (!taught.TryGetValue(classLabel, out var subjects) ||
+                !subjects.Contains(subject, StringComparer.OrdinalIgnoreCase))
+            {
+                notTaught.Add(classLabel);
+                continue;
+            }
+
             // Skipped, not failed: scheduling a subject across the school should not stop at the
             // first class that already has it.
             if (await _repo.PaperSubjectExistsAsync(dto.ExamId, classLabel, subject, ct))
@@ -194,12 +218,17 @@ public class AdminExamService : IAdminExamService
         }
 
         // Nothing done and nothing to do is worth saying out loud; the dialog would otherwise
-        // close on a silent no-op.
+        // close on a silent no-op. The curriculum miss is reported first because it is the one
+        // the admin has to go and fix somewhere else.
+        if (scheduled.Count == 0 && notTaught.Count > 0)
+            throw new ValidationException(
+                $"{string.Join(", ", notTaught)} {(notTaught.Count == 1 ? "does" : "do")} not study {subject}. " +
+                "Add it under Classes and Sections, Subjects and Teachers, then schedule the paper.");
         if (scheduled.Count == 0)
             throw new ValidationException(
                 $"{subject} is already scheduled for {string.Join(", ", already)} in this exam.");
 
-        return new AddPapersResultDto(scheduled.Count, scheduled, already);
+        return new AddPapersResultDto(scheduled.Count, scheduled, already, notTaught);
     }
 
     public Task DeletePaperAsync(long paperId, CancellationToken ct = default)
@@ -209,13 +238,40 @@ public class AdminExamService : IAdminExamService
 public class AdminFeeService : IAdminFeeService
 {
     private readonly IFeeRepository _repo;
+    private readonly IFeeSubmissionRepository _submissions;
+    private readonly IStudentRepository _students;
+    private readonly INotificationCenter _bell;
+    private readonly FeeReceiptBuilder _receipts;
+    private readonly ICurrentUser _user;
     private readonly ICurrentSchool _school;
 
-    public AdminFeeService(IFeeRepository repo, ICurrentSchool school)
+    public AdminFeeService(IFeeRepository repo, IFeeSubmissionRepository submissions,
+        IStudentRepository students, INotificationCenter bell, FeeReceiptBuilder receipts,
+        ICurrentUser user, ICurrentSchool school)
     {
         _repo = repo;
+        _submissions = submissions;
+        _students = students;
+        _bell = bell;
+        _receipts = receipts;
+        _user = user;
         _school = school;
     }
+
+    public async Task<IReadOnlyList<FeePaymentDto>> PaymentsAsync(long invoiceId, CancellationToken ct = default)
+    {
+        var rows = await _repo.GetPaymentsAsync(_school.SchoolId, invoiceId, ct);
+        return rows.Select(p => new FeePaymentDto(
+            p.Id,
+            // Derived the same way the receipt derives it, so the number on the list and the
+            // number on the printed slip are the same string.
+            $"RCPT-{(p.PaidDate ?? p.CreatedAt):yy}-{p.Id:D5}",
+            p.Amount, p.Method, p.Reference, p.PaidDate,
+            Math.Max(0m, p.InvoiceTotal - p.PaidToDate))).ToList();
+    }
+
+    public Task<FeeReceiptDto?> ReceiptAsync(long paymentId, CancellationToken ct = default)
+        => _receipts.BuildAsync(_school.SchoolId, paymentId, null, ct);
 
     public async Task<IReadOnlyList<FeeInvoiceDto>> ListAsync(string? status, CancellationToken ct = default)
     {
@@ -264,7 +320,83 @@ public class AdminFeeService : IAdminFeeService
     {
         if (string.IsNullOrWhiteSpace(dto.Month)) throw new ValidationException("Billing month is required.");
         var r = await _repo.GenerateAsync(_school.SchoolId, dto.Month.Trim(), dto.DueDate, dto.ClassName, dto.IncludeOneOff, ct);
-        return new GenerateInvoicesResultDto(r.Created, r.AlreadyBilled, r.UnpricedClasses);
+        return new GenerateInvoicesResultDto(r.Created, r.AlreadyBilled, r.UnpricedClasses, r.TransportSkipped, r.RepeatChargesSkipped, r.ToppedUp);
+    }
+
+    public async Task<IReadOnlyList<FeeSubmissionDto>> ListSubmissionsAsync(string? status,
+        CancellationToken ct = default)
+    {
+        var rows = await _submissions.ListAsync(_school.SchoolId, status, ct);
+        return rows.Select(r => new FeeSubmissionDto(
+            r.Id, r.InvoiceId, r.InvoiceNo, r.StudentName, r.ClassLabel, r.Month, r.Amount,
+            r.Method, r.Reference, r.PaidDate, r.Note, r.Status, r.CreatedAt,
+            r.InvoiceAmount, r.InvoiceAmount - r.InvoicePaid, r.ReviewedAt, r.ReviewNote)).ToList();
+    }
+
+    public async Task ReviewSubmissionAsync(long id, ReviewFeeSubmissionDto dto, CancellationToken ct = default)
+    {
+        var sub = await _submissions.GetAsync(_school.SchoolId, id, ct)
+                  ?? throw new NotFoundException("That submission was not found.");
+        if (sub.Status != "pending")
+            throw new ValidationException($"This payment has already been {sub.Status}.");
+
+        var note = string.IsNullOrWhiteSpace(dto.Note) ? null : dto.Note.Trim();
+        if (!dto.Approve && note is null)
+            throw new ValidationException("Say why it is being rejected — the family sees this.");
+
+        if (dto.Approve)
+        {
+            // Re-read the invoice rather than trusting the figures joined onto the claim: it may
+            // have been settled at the counter since the family submitted this, and approving
+            // would then credit the same month twice.
+            var invoice = await _repo.GetInvoiceAsync(_school.SchoolId, sub.InvoiceId, ct)
+                          ?? throw new ValidationException("The invoice behind this payment no longer exists.");
+            var balance = invoice.Amount - invoice.Paid;
+            if (balance <= 0)
+                throw new ValidationException(
+                    $"{invoice.InvoiceNo} has already been settled. Reject this with a note instead.");
+            if (sub.Amount > balance)
+                throw new ValidationException(
+                    $"Only {balance:0.##} is still owing on {invoice.InvoiceNo}, but {sub.Amount:0.##} was submitted. " +
+                    "Reject it and record the correct amount at the counter.");
+        }
+
+        // The claim is taken off the queue BEFORE any money is recorded. The update only moves a
+        // row that is still pending, so of two reviewers clicking Confirm at once exactly one
+        // gets here — reversing the order would let both record a payment against one claim.
+        var claimed = await _submissions.MarkReviewedAsync(_school.SchoolId, id,
+            dto.Approve ? "verified" : "rejected", _user.UserId, note, ct);
+        if (claimed == 0)
+            throw new ValidationException("Somebody else has just reviewed this payment. Reload the list.");
+
+        if (dto.Approve)
+        {
+            var paymentId = await _repo.RecordPaymentAsync(_school.SchoolId, sub.InvoiceId, sub.Amount,
+                sub.Method, sub.Reference, sub.PaidDate, ct);
+            await _submissions.SetPaymentIdAsync(_school.SchoolId, id, paymentId, ct);
+        }
+
+        await NotifyFamilyAsync(sub, dto.Approve, note, ct);
+    }
+
+    /// <summary>
+    /// Tells whoever submitted it what happened. Falls back to the student's own login when the
+    /// submitter is unknown, so a decision is never silent.
+    /// </summary>
+    private async Task NotifyFamilyAsync(FeePaymentSubmission sub, bool approved, string? note,
+        CancellationToken ct)
+    {
+        var target = sub.SubmittedBy
+                     ?? (await _students.GetByIdAsync(_school.SchoolId, sub.StudentId, ct))?.UserId;
+        if (target is not { } userId) return;
+
+        var what = sub.Month ?? sub.InvoiceNo ?? "your fee";
+        await _bell.NotifyUserAsync(userId, _school.SchoolId,
+            approved ? "Fee payment confirmed" : "Fee payment not confirmed",
+            approved
+                ? $"{sub.Amount:0.##} for {what} has been confirmed and applied to your account."
+                : $"{sub.Amount:0.##} for {what} could not be confirmed. {note}",
+            "fee", "fee_payment_submission", sub.Id, ct);
     }
 
     private static FeeInvoiceDto ToDto(FeeInvoiceRow i) => new(

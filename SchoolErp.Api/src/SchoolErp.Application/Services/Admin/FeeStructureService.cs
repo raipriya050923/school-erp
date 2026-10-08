@@ -11,6 +11,9 @@ public class FeeStructureService : IFeeStructureService
     /// <summary>Mirrors the fee_structures.frequency enum; anything else is rejected.</summary>
     private static readonly string[] ValidFrequencies = { "one_time", "monthly", "quarterly", "half_yearly", "yearly" };
 
+    /// <summary>Mirrors the fee_types.pricing_mode enum.</summary>
+    private static readonly string[] ValidPricingModes = { "class", "distance" };
+
     private readonly IFeeStructureRepository _repo;
     private readonly IClassRepository _classes;
     private readonly IAcademicYearRepository _years;
@@ -49,6 +52,7 @@ public class FeeStructureService : IFeeStructureService
             Name = name,
             Description = Trim(dto.Description),
             Frequency = Frequency(dto.Frequency, "monthly"),
+            PricingMode = PricingMode(dto.PricingMode, "class"),
             IsRefundable = dto.IsRefundable,
             IsActive = true,
         }, ct);
@@ -65,6 +69,7 @@ public class FeeStructureService : IFeeStructureService
         head.Name = name;
         head.Description = Trim(dto.Description);
         head.Frequency = Frequency(dto.Frequency, head.Frequency);
+        head.PricingMode = PricingMode(dto.PricingMode, head.PricingMode);
         head.IsRefundable = dto.IsRefundable;
         await _repo.UpdateHeadAsync(head, ct);
     }
@@ -122,10 +127,15 @@ public class FeeStructureService : IFeeStructureService
         // re-checks the head, but the class only exists as a foreign key, so verify it here.
         var classIds = (await _classes.GetAllWithSectionsAsync(_school.SchoolId, ct)).Select(c => c.Id).ToHashSet();
         var headIds = (await _repo.GetHeadsAsync(_school.SchoolId, ct)).Select(h => h.Id).ToHashSet();
+        var byDistance = (await _repo.GetHeadsAsync(_school.SchoolId, ct))
+            .Where(h => h.PricingMode == "distance").ToDictionary(h => h.Id, h => h.Name);
         foreach (var cell in dto.Cells)
         {
             if (!classIds.Contains(cell.ClassId)) throw new NotFoundException($"Class {cell.ClassId} not found.");
             if (!headIds.Contains(cell.HeadId)) throw new NotFoundException($"Fee head {cell.HeadId} not found.");
+            if (byDistance.TryGetValue(cell.HeadId, out var name))
+                throw new ValidationException(
+                    $"{name} is priced per student by distance — set its bands on the Transport Fee screen, not here.");
         }
 
         foreach (var cell in dto.Cells)
@@ -165,7 +175,7 @@ public class FeeStructureService : IFeeStructureService
     }
 
     private static FeeHeadDto ToDto(FeeHead h, int inUse) =>
-        new(h.Id, h.Name, h.Description, h.Frequency, h.IsRefundable, h.IsActive, inUse);
+        new(h.Id, h.Name, h.Description, h.Frequency, h.PricingMode, h.IsRefundable, h.IsActive, inUse);
 
     private static string ValidateName(SaveFeeHeadDto dto)
     {
@@ -176,6 +186,9 @@ public class FeeStructureService : IFeeStructureService
 
     private static string Frequency(string? value, string fallback) =>
         ValidFrequencies.Contains(value) ? value! : fallback;
+
+    private static string PricingMode(string? value, string fallback) =>
+        ValidPricingModes.Contains(value) ? value! : fallback;
 
     private static string? Trim(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

@@ -14,6 +14,7 @@ class AuthUser {
     required this.title,
     required this.token,
     required this.expiresAtUtc,
+    this.mustChangePassword = false,
   });
 
   final int id;
@@ -25,6 +26,11 @@ class AuthUser {
   final String title;
   final String token;
   final DateTime expiresAtUtc;
+
+  /// True for a freshly provisioned account. The API refuses every other
+  /// endpoint until the password is changed, so the app must send them to the
+  /// change screen rather than into a portal that would 403 on every request.
+  final bool mustChangePassword;
 
   bool get isExpired => DateTime.now().toUtc().isAfter(expiresAtUtc);
 
@@ -40,6 +46,7 @@ class AuthUser {
     // The API sends UTC; parsing without this can yield a local-time DateTime
     // and make a valid token look expired.
     expiresAtUtc: DateTime.parse(json['expiresAtUtc'] as String).toUtc(),
+    mustChangePassword: json['mustChangePassword'] == true,
   );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -52,6 +59,7 @@ class AuthUser {
     'title': title,
     'token': token,
     'expiresAtUtc': expiresAtUtc.toIso8601String(),
+    'mustChangePassword': mustChangePassword,
   };
 }
 

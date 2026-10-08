@@ -17,6 +17,14 @@ public class AdminCurriculumController : ControllerBase
     private readonly ICurriculumService _service;
     public AdminCurriculumController(ICurriculumService service) => _service = service;
 
+    /// <summary>
+    /// Every class with the subjects it studies. The exam screens use it so a paper can only be
+    /// scheduled in a subject the class actually takes.
+    /// </summary>
+    [HttpGet("subjects-by-class")]
+    public async Task<IActionResult> SubjectsByClass(CancellationToken ct)
+        => Ok(await _service.SubjectsByClassAsync(ct));
+
     /// <summary>Subject picks plus the teacher grid for one class.</summary>
     [HttpGet("classes/{classId:long}")]
     public async Task<IActionResult> Get(long classId, CancellationToken ct)

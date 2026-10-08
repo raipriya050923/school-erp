@@ -1,4 +1,4 @@
-# EduNexus — Login Accounts
+# पाठशाला — Login Accounts
 
 All seeded users share the same demo password:
 

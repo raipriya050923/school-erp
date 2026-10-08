@@ -51,13 +51,14 @@ type Level = 'countries' | 'states' | 'cities';
           </select>
         }
         @if (level === 'cities') {
-          <select class="select" [(ngModel)]="filterStateId" (ngModelChange)="loadCities()">
+          <select class="select" [(ngModel)]="filterStateId" (ngModelChange)="onStateFilter()">
             <option [ngValue]="null">All states</option>
             @for (s of filteredStates; track s.id) { <option [ngValue]="s.id">{{ s.name }}</option> }
           </select>
         }
         <div class="grow"></div>
-        <input class="input" style="max-width:220px;" placeholder="Search…" [(ngModel)]="q" />
+        <input class="input" style="max-width:220px;" placeholder="Search…"
+               [(ngModel)]="q" (ngModelChange)="page = 1" />
       </div>
 
       @if (loading) { <div class="empty">Loading…</div> }
@@ -75,7 +76,7 @@ type Level = 'countries' | 'states' | 'cities';
               </tr>
             </thead>
             <tbody>
-              @for (r of rows; track r.id) {
+              @for (r of pagedRows; track r.id) {
                 <tr>
                   <td class="td-main">{{ r.name }}</td>
                   @if (level === 'countries') {
@@ -119,6 +120,36 @@ type Level = 'countries' | 'states' | 'cities';
             </tbody>
           </table>
         </div>
+
+        @if (total > 0) {
+          <div class="table-pager">
+            <span class="pager-count">
+              Showing {{ rangeStart }}–{{ rangeEnd }} of {{ total }} {{ total === 1 ? singular : level }}
+            </span>
+            <div class="grow"></div>
+            <label>
+              Rows
+              <select class="pager-size" [ngModel]="pageSize" (ngModelChange)="setPageSize($event)">
+                @for (n of pageSizes; track n) { <option [ngValue]="n">{{ n }}</option> }
+              </select>
+            </label>
+            @if (totalPages > 1) {
+              <div class="pager-pages">
+                <button class="pager-btn" [disabled]="currentPage === 1" (click)="goTo(currentPage - 1)"
+                        title="Previous page" aria-label="Previous page">‹</button>
+                @for (p of pageNumbers; track $index) {
+                  @if (p === null) { <span class="pager-gap">…</span> }
+                  @else {
+                    <button class="pager-btn" [class.active]="p === currentPage" [disabled]="p === currentPage"
+                            [attr.aria-current]="p === currentPage ? 'page' : null" (click)="goTo(p)">{{ p }}</button>
+                  }
+                }
+                <button class="pager-btn" [disabled]="currentPage === totalPages" (click)="goTo(currentPage + 1)"
+                        title="Next page" aria-label="Next page">›</button>
+              </div>
+            }
+          </div>
+        }
       }
     </div>
 
@@ -193,6 +224,10 @@ export class SaGeographyComponent implements OnInit {
   filterStateId: number | null = null;
   q = '';
 
+  readonly pageSizes = [10, 25, 50, 100];
+  pageSize = 25;
+  page = 1;
+
   loading = true;
   error = '';
   formError = '';
@@ -215,7 +250,7 @@ export class SaGeographyComponent implements OnInit {
       : this.states;
   }
 
-  /** The rows on screen for the selected level, narrowed by the search box. */
+  /** Every row for the selected level, narrowed by the search box — not yet paged. */
   get rows(): { id: number; name: string; isActive: boolean }[] {
     const all = this.level === 'countries' ? this.countries
       : this.level === 'states' ? this.filteredStates
@@ -224,12 +259,62 @@ export class SaGeographyComponent implements OnInit {
     return q ? all.filter(r => r.name.toLowerCase().includes(q)) : all;
   }
 
+  get total(): number { return this.rows.length; }
+
+  get totalPages(): number { return Math.max(1, Math.ceil(this.total / this.pageSize)); }
+
+  /**
+   * The slice on screen. The page is clamped on read as well as on write, because
+   * searching or retiring a row can shrink the list under the current page without
+   * going through a handler.
+   */
+  get pagedRows(): { id: number; name: string; isActive: boolean }[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.rows.slice(start, start + this.pageSize);
+  }
+
+  get rangeStart(): number { return this.total === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1; }
+  get rangeEnd(): number { return Math.min(this.currentPage * this.pageSize, this.total); }
+
+  get currentPage(): number { return Math.min(this.page, this.totalPages); }
+
+  /**
+   * First page, last page, and a window around the current one — `null` marks a gap,
+   * so a long city list does not push the table off screen.
+   */
+  get pageNumbers(): (number | null)[] {
+    const last = this.totalPages;
+    const cur = this.currentPage;
+    if (last <= 7) return Array.from({ length: last }, (_, i) => i + 1);
+
+    const out: (number | null)[] = [1];
+    const from = Math.max(2, cur - 1);
+    const to = Math.min(last - 1, cur + 1);
+    if (from > 2) out.push(null);
+    for (let p = from; p <= to; p++) out.push(p);
+    if (to < last - 1) out.push(null);
+    out.push(last);
+    return out;
+  }
+
+  goTo(p: number): void {
+    this.page = Math.min(Math.max(1, p), this.totalPages);
+  }
+
+  setPageSize(n: number): void {
+    // Keep the first visible row visible, so changing the size is not a jump to nowhere.
+    const first = (this.currentPage - 1) * this.pageSize;
+    this.pageSize = n;
+    this.page = Math.floor(first / n) + 1;
+  }
+
   asCountry(r: unknown): Country { return r as Country; }
   asState(r: unknown): StateRegion { return r as StateRegion; }
   asCity(r: unknown): City { return r as City; }
 
-  onLevelChange(): void { this.q = ''; this.loadAll(); }
-  onCountryFilter(): void { this.filterStateId = null; this.loadCities(); }
+  onLevelChange(): void { this.q = ''; this.page = 1; this.loadAll(); }
+  onCountryFilter(): void { this.filterStateId = null; this.page = 1; this.loadCities(); }
+  onStateFilter(): void { this.page = 1; this.loadCities(); }
 
   private loadAll(): void {
     this.loading = true;

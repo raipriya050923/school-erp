@@ -5,7 +5,7 @@ import 'core/api/session.dart';
 import 'core/app_state.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
-import 'features/shell/app_shell.dart';
+import 'features/shell/role_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,13 +28,13 @@ class SchoolPortalApp extends StatelessWidget {
     return AppStateBuilder(
       builder: (BuildContext context, AppState state) {
         return MaterialApp(
-          title: 'School Portal',
+          title: 'पाठशाला',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: state.themeMode,
           home: Session.instance.isSignedIn
-              ? const AppShell()
+              ? const RoleShell()
               : const LoginScreen(),
           builder: (BuildContext context, Widget? child) {
             // Keep the layout predictable regardless of the device font scale.

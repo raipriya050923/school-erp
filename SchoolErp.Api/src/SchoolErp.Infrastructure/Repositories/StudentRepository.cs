@@ -14,25 +14,54 @@ public class StudentRepository : IStudentRepository
         id, school_id, user_id, admission_no, roll_no, class_name, section_name,
         first_name, last_name, gender, dob, blood_group, email, phone,
         guardian_name, guardian_phone, current_address, city, state, pincode, state_id, city_id,
-        previous_school, admission_date, fee_due, status, created_at";
+        previous_school, tc_no, admission_date, fee_due, status, created_at";
 
-    public async Task<IReadOnlyList<Student>> GetAllAsync(long schoolId, string? search, string? className, CancellationToken ct = default)
+    /// <summary>
+    /// One page of the roster, newest admission first, plus how many rows the filter matches in
+    /// total. The count comes back with the page because the pager cannot be drawn without it,
+    /// and fetching it separately would let the two describe different sets of students.
+    /// </summary>
+    public async Task<(IReadOnlyList<Student> Rows, int Total)> GetPageAsync(
+        long schoolId, string? search, string? className, DateTime? admittedFrom, DateTime? admittedTo,
+        int offset, int limit, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
-        var sql = $"SELECT {Cols} FROM students WHERE school_id=@sid AND deleted_at IS NULL";
+
+        // Built once and used by both statements below, so the count always describes exactly
+        // the rows the page was drawn from.
+        var where = "WHERE school_id=@sid AND deleted_at IS NULL";
         var ps = new List<(string, object?)> { ("@sid", schoolId) };
         if (!string.IsNullOrWhiteSpace(search))
         {
-            sql += " AND (first_name LIKE @q OR last_name LIKE @q OR admission_no LIKE @q OR guardian_name LIKE @q)";
+            where += " AND (first_name LIKE @q OR last_name LIKE @q OR admission_no LIKE @q OR guardian_name LIKE @q)";
             ps.Add(("@q", $"%{search}%"));
         }
         if (!string.IsNullOrWhiteSpace(className))
         {
-            sql += " AND class_name = @cls";
+            where += " AND class_name = @cls";
             ps.Add(("@cls", className));
         }
-        sql += " ORDER BY created_at DESC LIMIT 500";
-        return await DbHelper.QueryAsync(conn, sql, Map, ct, ps.ToArray());
+        // The closing day is taken as the whole day: admission_date carries a time, so a plain
+        // less-than-or-equal would drop everyone admitted after midnight on that date.
+        if (admittedFrom is not null)
+        {
+            where += " AND admission_date >= @from";
+            ps.Add(("@from", admittedFrom.Value.Date));
+        }
+        if (admittedTo is not null)
+        {
+            where += " AND admission_date < @to";
+            ps.Add(("@to", admittedTo.Value.Date.AddDays(1)));
+        }
+
+        var total = (int)await DbHelper.ScalarLongAsync(conn, $"SELECT COUNT(*) FROM students {where}", ct, ps.ToArray());
+
+        // id breaks ties on created_at: two students admitted in the same second are otherwise
+        // free to swap places between pages, showing one twice and hiding the other.
+        var pageSql = $"SELECT {Cols} FROM students {where} ORDER BY created_at DESC, id DESC LIMIT @limit OFFSET @offset";
+        var pageParams = ps.Concat(new (string, object?)[] { ("@limit", limit), ("@offset", offset) }).ToArray();
+        var rows = await DbHelper.QueryAsync(conn, pageSql, Map, ct, pageParams);
+        return (rows, total);
     }
 
     public async Task<Student?> GetByIdAsync(long schoolId, long id, CancellationToken ct = default)
@@ -49,10 +78,10 @@ public class StudentRepository : IStudentRepository
             INSERT INTO students
               (school_id, admission_no, roll_no, class_name, section_name, first_name, last_name,
                gender, dob, blood_group, email, guardian_name, guardian_phone, current_address,
-               city, state, pincode, state_id, city_id, previous_school, admission_date, fee_due, status, created_at, updated_at)
+               city, state, pincode, state_id, city_id, previous_school, tc_no, admission_date, fee_due, status, created_at, updated_at)
             VALUES
               (@sid, @adm, @roll, @cls, @sec, @fn, @ln, @gender, @dob, @blood, @email, @gname, @gphone,
-               @addr, @city, @state, @pin, @stateId, @cityId, @prev, @admdate, @fee, @status, NOW(), NOW());";
+               @addr, @city, @state, @pin, @stateId, @cityId, @prev, @tc, @admdate, @fee, @status, NOW(), NOW());";
         return await DbHelper.InsertAsync(conn, sql, ct,
             ("@sid", s.SchoolId), ("@adm", s.AdmissionNo), ("@roll", s.RollNo), ("@cls", s.ClassName),
             ("@sec", s.SectionName), ("@fn", s.FirstName), ("@ln", s.LastName), ("@gender", s.Gender),
@@ -60,6 +89,7 @@ public class StudentRepository : IStudentRepository
             ("@gname", s.GuardianName), ("@gphone", s.GuardianPhone), ("@addr", s.Address),
             ("@city", s.City), ("@state", s.State), ("@pin", s.Pincode),
             ("@stateId", (object?)s.StateId), ("@cityId", (object?)s.CityId), ("@prev", s.PreviousSchool),
+            ("@tc", s.TcNo),
             ("@admdate", (object?)s.AdmissionDate), ("@fee", s.FeeDue), ("@status", s.Status));
     }
 
@@ -72,7 +102,7 @@ public class StudentRepository : IStudentRepository
               gender=@gender, dob=@dob, blood_group=@blood, email=@email, guardian_name=@gname,
               guardian_phone=@gphone, current_address=@addr, city=@city, state=@state, pincode=@pin,
               state_id=@stateId, city_id=@cityId,
-              previous_school=@prev, updated_at=NOW()
+              previous_school=@prev, tc_no=@tc, updated_at=NOW()
             WHERE id=@id AND school_id=@sid;";
         await DbHelper.ExecuteAsync(conn, sql, ct,
             ("@roll", s.RollNo), ("@cls", s.ClassName), ("@sec", s.SectionName), ("@fn", s.FirstName),
@@ -80,7 +110,7 @@ public class StudentRepository : IStudentRepository
             ("@email", s.Email), ("@gname", s.GuardianName), ("@gphone", s.GuardianPhone),
             ("@addr", s.Address), ("@city", s.City), ("@state", s.State), ("@pin", s.Pincode),
             ("@stateId", (object?)s.StateId), ("@cityId", (object?)s.CityId),
-            ("@prev", s.PreviousSchool), ("@id", s.Id), ("@sid", s.SchoolId));
+            ("@prev", s.PreviousSchool), ("@tc", s.TcNo), ("@id", s.Id), ("@sid", s.SchoolId));
     }
 
     public async Task SetStatusAsync(long schoolId, long id, string status, CancellationToken ct = default)
@@ -128,6 +158,19 @@ public class StudentRepository : IStudentRepository
     /// Highest purely numeric roll number already used in the class/section, plus one.
     /// Non-numeric roll numbers (e.g. "8A-04") are ignored so they cannot break the sequence.
     /// </summary>
+    public async Task<bool> ExistsInSectionAsync(long schoolId, string firstName, string lastName,
+        string? className, string? sectionName, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        return await DbHelper.ScalarLongAsync(conn, @"
+            SELECT COUNT(*) FROM students
+            WHERE school_id=@sid AND first_name=@fn AND last_name=@ln
+              AND class_name<=>@cls AND section_name<=>@sec
+              AND deleted_at IS NULL", ct,
+            ("@sid", schoolId), ("@fn", firstName), ("@ln", lastName),
+            ("@cls", className), ("@sec", sectionName)) > 0;
+    }
+
     public async Task<string> NextRollNoAsync(long schoolId, string? className, string? sectionName, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
@@ -173,6 +216,7 @@ public class StudentRepository : IStudentRepository
         StateId = r.GetLongOrNull("state_id"),
         CityId = r.GetLongOrNull("city_id"),
         PreviousSchool = r.GetStringOrNull("previous_school"),
+        TcNo = r.GetStringOrNull("tc_no"),
         AdmissionDate = r.GetDateOrNull("admission_date"),
         FeeDue = r.GetDecimal("fee_due"),
         Status = r.GetString("status"),

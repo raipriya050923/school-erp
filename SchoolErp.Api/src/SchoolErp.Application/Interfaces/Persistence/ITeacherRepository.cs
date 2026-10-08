@@ -20,6 +20,16 @@ public interface ITeacherRepository
     /// </summary>
     Task<IReadOnlyDictionary<long, string>> GetClassTeacherSectionsAsync(long schoolId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The subjects this teacher is able to take. A teacher commonly teaches more than one, and
+    /// the Subjects &amp; Teachers grid offers them for every subject on this list.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetSubjectsAsync(long schoolId, long staffId, CancellationToken ct = default);
+    /// <summary>Replaces the whole set. Names are resolved against the school's own subjects.</summary>
+    Task ReplaceSubjectsAsync(long schoolId, long staffId, IEnumerable<string> subjectNames, CancellationToken ct = default);
+    /// <summary>Every teacher's subject list at once, keyed by staff id — one query for the list screen.</summary>
+    Task<IReadOnlyDictionary<long, IReadOnlyList<string>>> GetSubjectsForAllAsync(long schoolId, CancellationToken ct = default);
+
     /// <summary>A staff member's qualifications, in the order the admin entered them.</summary>
     Task<IReadOnlyList<StaffQualification>> GetQualificationsAsync(long schoolId, long staffId, CancellationToken ct = default);
     /// <summary>Replaces the whole set — the form always posts the complete list.</summary>

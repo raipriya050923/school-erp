@@ -54,6 +54,26 @@ public class NotificationCenterService : INotificationCenter
         }
     }
 
+    /// <summary>
+    /// Same contract as <see cref="NotifyRoleAsync"/>, aimed at one account: a failure here must
+    /// never fail the review that prompted it.
+    /// </summary>
+    public async Task NotifyUserAsync(long userId, long? schoolId, string title, string? body,
+        string type, string? refTable = null, long? refId = null, CancellationToken ct = default)
+    {
+        try
+        {
+            await _repo.AddForUserAsync(userId, schoolId, new Notification
+            {
+                Title = title, Body = body, Type = type, RefTable = refTable, RefId = refId,
+            }, ct);
+        }
+        catch
+        {
+            // deliberately ignored — see summary
+        }
+    }
+
     private static NotificationDto ToDto(Notification n) =>
         new(n.Id, n.Title, n.Body, n.Type, n.ReadAt is null, n.CreatedAt);
 }

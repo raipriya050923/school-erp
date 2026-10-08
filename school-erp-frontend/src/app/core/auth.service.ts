@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
 import { environment } from '../../environments/environment';
 
-export type Role = 'super_admin' | 'school_admin' | 'teacher' | 'student';
+export type Role = 'super_admin' | 'school_admin' | 'teacher' | 'student' | 'parent';
 
 export interface SessionUser {
   id: number;
@@ -18,6 +18,10 @@ export interface SessionUser {
   /** Bearer token carrying the signed school id that scopes every API call. */
   token: string;
   expiresAtUtc: string;
+  /** True while still on a password the school issued; the API refuses everything until cleared. */
+  mustChangePassword: boolean;
+  /** The school's shell palette: classic | brand | forest | mist. */
+  theme: string;
 }
 
 /** Raw shape returned by POST /api/auth/login. */
@@ -33,11 +37,20 @@ interface AuthUserResponse {
   title: string;
   token: string;
   expiresAtUtc: string;
+  mustChangePassword: boolean;
+  theme: string;
 }
 
-export interface ForgotResult { message: string; demoToken: string | null; }
+/** Deliberately message-only: the reset token leaves the server by email and nowhere else. */
+export interface ForgotResult { message: string; }
 
 const STORAGE_KEY = 'erp.session';
+/**
+ * The palette of the school last signed in from on this device. Kept apart from the session
+ * because it must survive logout: the sign-in page has no session to read, so without this it
+ * would be the one screen in the product that ignores the school's colours.
+ */
+const THEME_KEY = 'erp.lastTheme';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -54,8 +67,12 @@ export class AuthService {
           username: r.username, name: r.fullName, email: r.email ?? '',
           title: r.title, portalPath: r.portalPath,
           token: r.token, expiresAtUtc: r.expiresAtUtc,
+          mustChangePassword: r.mustChangePassword ?? false,
+          theme: r.theme || 'classic',
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+        // Remembered separately so the sign-in page can wear it next time.
+        try { localStorage.setItem(THEME_KEY, u.theme); } catch { /* private mode */ }
         this.user.set(u);
         return u;
       }),
@@ -73,6 +90,48 @@ export class AuthService {
 
   resetPassword(token: string, newPassword: string): Observable<void> {
     return this.http.post<void>(`${this.base}/reset-password`, { token, newPassword });
+  }
+
+  /**
+   * The palettes a school may wear. Kept beside the session because the layout reads the
+   * session's `theme`, and these are the values it understands.
+   */
+  static readonly THEMES = [
+    { key: 'classic', name: 'Classic', rail: '#ffffff',                                 pill: '#2563eb', note: 'The light rail the product ships with' },
+    { key: 'brand',   name: 'Brand',   rail: 'linear-gradient(160deg,#2563eb,#1d4ed8)', pill: '#ffffff', note: 'Royal blue rail, white active item' },
+    { key: 'forest',  name: 'Forest',  rail: 'linear-gradient(160deg,#154439,#10362f)', pill: '#0f9b76', note: 'Deep green, the traditional school colour' },
+    { key: 'mist',    name: 'Mist',    rail: '#eef2f9',                                 pill: '#2563eb', note: 'Pale blue-grey with coloured module icons' },
+  ];
+
+  /**
+   * Changes the school's palette. The stored session is patched from the response so the rail
+   * repaints immediately — waiting for the next sign-in to see a colour you just picked reads
+   * as the setting not having worked.
+   */
+  setTheme(theme: string): Observable<string> {
+    return this.http.put<{ theme: string }>(`${environment.adminApi}/appearance`, { theme }).pipe(
+      map(r => {
+        const u = this.user();
+        if (u) {
+          const next = { ...u, theme: r.theme };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          try { localStorage.setItem(THEME_KEY, r.theme); } catch { /* private mode */ }
+          this.user.set(next);
+        }
+        return r.theme;
+      }),
+    );
+  }
+
+  /**
+   * The palette to paint a signed-out page with: the live session's if there is one, otherwise
+   * whatever this device last signed in as. Classic on a first visit, which is the right guess
+   * when there is nothing to go on.
+   */
+  get signedOutTheme(): string {
+    const live = this.user()?.theme;
+    if (live) return live;
+    try { return localStorage.getItem(THEME_KEY) || 'classic'; } catch { return 'classic'; }
   }
 
   logout(): void {

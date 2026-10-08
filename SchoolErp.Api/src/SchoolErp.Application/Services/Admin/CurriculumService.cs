@@ -33,6 +33,22 @@ public class CurriculumService : ICurriculumService
         _school = school;
     }
 
+    public async Task<IReadOnlyList<ClassSubjectsDto>> SubjectsByClassAsync(CancellationToken ct = default)
+    {
+        var sid = _school.SchoolId;
+        var year = await RequireYearAsync(sid, ct);
+        var classes = await _classes.GetAllWithSectionsAsync(sid, ct);
+
+        var result = new List<ClassSubjectsDto>();
+        foreach (var c in classes)
+        {
+            var chosen = await _repo.GetClassSubjectsAsync(sid, year.Id, c.Id, ct);
+            result.Add(new ClassSubjectsDto(c.Id, c.Name,
+                chosen.Select(x => x.SubjectName ?? "").Where(n => n.Length > 0).OrderBy(n => n).ToList()));
+        }
+        return result;
+    }
+
     public async Task<ClassCurriculumDto> GetAsync(long classId, CancellationToken ct = default)
     {
         var sid = _school.SchoolId;

@@ -24,10 +24,40 @@ public class AdminFeesController : ControllerBase
     [HttpGet("invoices/{id:long}/lines")]
     public async Task<IActionResult> Lines(long id, CancellationToken ct) => Ok(await _service.LinesAsync(id, ct));
 
+    /// <summary>Every payment taken against one invoice, oldest first — one receipt each.</summary>
+    [HttpGet("invoices/{id:long}/payments")]
+    public async Task<IActionResult> Payments(long id, CancellationToken ct)
+        => Ok(await _service.PaymentsAsync(id, ct));
+
+    /// <summary>The receipt for one payment, ready to print.</summary>
+    [HttpGet("payments/{id:long}/receipt")]
+    public async Task<IActionResult> Receipt(long id, CancellationToken ct)
+    {
+        var receipt = await _service.ReceiptAsync(id, ct);
+        return receipt is null ? NotFound() : Ok(receipt);
+    }
+
     [HttpPost("invoices/{id:long}/payments")]
     public async Task<IActionResult> RecordPayment(long id, [FromBody] RecordFeePaymentDto dto, CancellationToken ct)
     {
         await _service.RecordPaymentAsync(id, dto, ct);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Payments families have declared and the office has not yet matched. Pending first, and
+    /// oldest first within that, so the longest wait is dealt with before the newest.
+    /// </summary>
+    [HttpGet("submissions")]
+    public async Task<IActionResult> Submissions([FromQuery] string? status, CancellationToken ct)
+        => Ok(await _service.ListSubmissionsAsync(status, ct));
+
+    /// <summary>Confirms or turns down one declared payment.</summary>
+    [HttpPost("submissions/{id:long}/review")]
+    public async Task<IActionResult> ReviewSubmission(long id, [FromBody] ReviewFeeSubmissionDto dto,
+        CancellationToken ct)
+    {
+        await _service.ReviewSubmissionAsync(id, dto, ct);
         return NoContent();
     }
 

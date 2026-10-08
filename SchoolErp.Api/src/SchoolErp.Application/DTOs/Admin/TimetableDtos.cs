@@ -80,11 +80,49 @@ public record DayTimetableDto(
     /// <summary>Days this school runs; days outside it are not offered.</summary>
     IReadOnlyList<int> WorkingDays);
 
+/* ---- period columns: the shape of the school day ---- */
+
+/// <summary>
+/// A period as the admin manages it. <paramref name="PeriodNo"/> is its running position in the
+/// day, breaks included — the same number the grid cells are keyed on. <paramref name="ScheduledCount"/>
+/// is how many cells school-wide sit in it, so the screen can say what a delete would strand.
+/// </summary>
+public record PeriodDto(long Id, int PeriodNo, string Name, string StartTime, string EndTime,
+    int DurationMinutes, bool IsBreak, int ScheduledCount);
+
+/// <summary>
+/// A period is entered as a start time plus how long it runs — that is how a school day is
+/// actually decided — and the end time is derived, so two fields can never disagree.
+/// </summary>
+public class SavePeriodDto
+{
+    public string Name { get; set; } = string.Empty;
+    /// <summary>"HH:mm" on a 24-hour clock.</summary>
+    public string StartTime { get; set; } = string.Empty;
+    public int DurationMinutes { get; set; }
+    /// <summary>A break holds no class; the grid greys it out and refuses subjects in it.</summary>
+    public bool IsBreak { get; set; }
+}
+
 public class SaveWorkingDaysDto
 {
     /// <summary>Day-of-week numbers the school runs: 1 = Sunday … 7 = Saturday.</summary>
     public IReadOnlyList<int> Days { get; set; } = Array.Empty<int>();
 }
+
+/// <summary>
+/// What to wipe. A day on its own is the common case — one day was filled badly and is being
+/// redone — so clearing the whole week has to be asked for explicitly rather than being the
+/// default an empty body falls into.
+/// </summary>
+public class ResetTimetableDto
+{
+    /// <summary>1 = Sunday … 7 = Saturday. Null clears every day.</summary>
+    public int? DayOfWeek { get; set; }
+}
+
+/// <summary>How many cells a reset removed, so the admin can see it did what they meant.</summary>
+public record ResetTimetableResultDto(int Cleared, string Scope);
 
 /// <summary>What an auto-fill run did, so the admin can see it worked before reviewing the grid.</summary>
 public record AutoFillResultDto(int Filled, int LeftEmpty, IReadOnlyList<string> Notes);

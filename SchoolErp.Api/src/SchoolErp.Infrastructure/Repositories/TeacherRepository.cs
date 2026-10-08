@@ -128,6 +128,61 @@ public class TeacherRepository : ITeacherRepository
         return map;
     }
 
+    public async Task<IReadOnlyList<string>> GetSubjectsAsync(long schoolId, long staffId, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        return await DbHelper.QueryAsync(conn, @"
+            SELECT sub.name
+            FROM staff_subjects ss
+            JOIN subjects sub ON sub.id = ss.subject_id
+            WHERE ss.school_id=@sid AND ss.staff_id=@id
+            ORDER BY sub.name",
+            r => r.GetString("name"), ct, ("@sid", schoolId), ("@id", staffId));
+    }
+
+    public async Task<IReadOnlyDictionary<long, IReadOnlyList<string>>> GetSubjectsForAllAsync(
+        long schoolId, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        // One query for the whole list rather than one per teacher: the teachers screen would
+        // otherwise issue a round trip per row.
+        var rows = await DbHelper.QueryAsync(conn, @"
+            SELECT ss.staff_id, sub.name
+            FROM staff_subjects ss
+            JOIN subjects sub ON sub.id = ss.subject_id
+            WHERE ss.school_id=@sid
+            ORDER BY ss.staff_id, sub.name",
+            r => (StaffId: r.GetLong("staff_id"), Name: r.GetString("name")), ct, ("@sid", schoolId));
+
+        return rows.GroupBy(x => x.StaffId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(x => x.Name).ToList());
+    }
+
+    public async Task ReplaceSubjectsAsync(long schoolId, long staffId,
+        IEnumerable<string> subjectNames, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        await DbHelper.ExecuteAsync(conn,
+            "DELETE FROM staff_subjects WHERE school_id=@sid AND staff_id=@id", ct,
+            ("@sid", schoolId), ("@id", staffId));
+
+        var clean = subjectNames
+            .Select(n => n?.Trim() ?? "")
+            .Where(n => n.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(20)
+            .ToList();
+
+        foreach (var name in clean)
+            // Resolved through subjects rather than trusting an id from the client: a name that
+            // matches nothing in this school simply writes no row.
+            await DbHelper.ExecuteAsync(conn, @"
+                INSERT IGNORE INTO staff_subjects (school_id, staff_id, subject_id)
+                SELECT @sid, @id, sub.id FROM subjects sub
+                WHERE sub.school_id=@sid AND sub.name=@name", ct,
+                ("@sid", schoolId), ("@id", staffId), ("@name", name));
+    }
+
     public async Task<IReadOnlyList<StaffQualification>> GetQualificationsAsync(long schoolId, long staffId, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);

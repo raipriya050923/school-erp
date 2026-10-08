@@ -10,7 +10,7 @@ public class UserRepository : IUserRepository
     private readonly IDbConnectionFactory _factory;
     public UserRepository(IDbConnectionFactory factory) => _factory = factory;
 
-    private const string Cols = "id, school_id, user_type, username, email, phone, password_hash, full_name, is_active";
+    private const string Cols = "id, school_id, user_type, username, email, phone, password_hash, full_name, is_active, must_change_password, password_changed_at";
 
     public async Task<User?> GetByUsernameOrEmailAsync(string usernameOrEmail, CancellationToken ct = default)
     {
@@ -26,12 +26,19 @@ public class UserRepository : IUserRepository
         return await DbHelper.QuerySingleAsync(conn, sql, Map, ct, ("@e", email));
     }
 
-    public async Task UpdatePasswordAsync(long userId, string passwordHash, CancellationToken ct = default)
+    public async Task UpdatePasswordAsync(long userId, string passwordHash, bool mustChange = false, CancellationToken ct = default)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
-        await DbHelper.ExecuteAsync(conn,
-            "UPDATE users SET password_hash=@h, updated_at=NOW() WHERE id=@id", ct,
-            ("@h", passwordHash), ("@id", userId));
+        // password_changed_at records only the holder choosing their own; an administrator
+        // issuing one leaves it untouched, so it still reads as never personally set.
+        await DbHelper.ExecuteAsync(conn, @"
+            UPDATE users
+            SET password_hash=@h,
+                must_change_password=@must,
+                password_changed_at = IF(@must, password_changed_at, NOW()),
+                updated_at=NOW()
+            WHERE id=@id", ct,
+            ("@h", passwordHash), ("@must", mustChange), ("@id", userId));
     }
 
     public async Task<bool> UsernameExistsAsync(string username, CancellationToken ct = default)
@@ -47,13 +54,15 @@ public class UserRepository : IUserRepository
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
         const string sql = @"
             INSERT INTO users
-              (school_id, user_type, username, email, phone, password_hash, full_name, is_active, created_at, updated_at)
+              (school_id, user_type, username, email, phone, password_hash, full_name, is_active,
+               must_change_password, created_at, updated_at)
             VALUES
-              (@school, @type, @username, @email, @phone, @hash, @name, @active, NOW(), NOW());";
+              (@school, @type, @username, @email, @phone, @hash, @name, @active, @must, NOW(), NOW());";
         return await DbHelper.InsertAsync(conn, sql, ct,
             ("@school", user.SchoolId), ("@type", user.UserType), ("@username", user.Username),
             ("@email", user.Email), ("@phone", user.Phone), ("@hash", user.PasswordHash),
-            ("@name", user.FullName), ("@active", user.IsActive));
+            ("@name", user.FullName), ("@active", user.IsActive),
+            ("@must", user.MustChangePassword));
     }
 
     public async Task<User?> GetByIdAsync(long id, CancellationToken ct = default)
@@ -77,6 +86,21 @@ public class UserRepository : IUserRepository
 
     public async Task<long?> GetStudentIdAsync(long userId, CancellationToken ct = default)
         => await LinkedIdAsync("students", userId, ct);
+
+    public async Task<long?> GetChildStudentIdAsync(long parentUserId, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        const string sql = @"
+            SELECT sg.student_id
+            FROM guardians g
+            JOIN student_guardians sg ON sg.guardian_id = g.id
+            JOIN students st ON st.id = sg.student_id AND st.deleted_at IS NULL
+            WHERE g.user_id = @uid
+            ORDER BY sg.student_id
+            LIMIT 1";
+        var id = await DbHelper.ScalarLongAsync(conn, sql, ct, ("@uid", parentUserId));
+        return id == 0 ? null : id;
+    }
 
     /// <summary>`table` is a compile-time literal from the two callers above — never user input.</summary>
     private async Task<long?> LinkedIdAsync(string table, long userId, CancellationToken ct)
@@ -129,5 +153,7 @@ public class UserRepository : IUserRepository
         PasswordHash = r.GetString("password_hash"),
         FullName = r.GetString("full_name"),
         IsActive = r.GetBool("is_active"),
+        MustChangePassword = r.GetBool("must_change_password"),
+        PasswordChangedAt = r.GetDateOrNull("password_changed_at"),
     };
 }

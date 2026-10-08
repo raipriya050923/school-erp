@@ -26,4 +26,6 @@ public interface ISchoolRepository
     Task SeedDefaultAcademicYearsAsync(long schoolId, CancellationToken ct = default);
     /// <summary>Days the school runs, as a comma-separated day-of-week list.</summary>
     Task SetWorkingDaysAsync(long schoolId, string days, CancellationToken ct = default);
+    /// <summary>Sets the shell palette every portal of this school renders in.</summary>
+    Task SetThemeAsync(long schoolId, string theme, CancellationToken ct = default);
 }

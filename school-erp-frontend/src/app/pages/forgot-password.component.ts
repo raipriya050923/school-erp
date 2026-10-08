@@ -9,11 +9,11 @@ import { AuthService } from '../core/auth.service';
   standalone: true,
   imports: [FormsModule, RouterLink],
   template: `
-    <div class="auth-page">
+    <div class="auth-page" [attr.data-theme]="theme">
       <div class="auth-card">
         <div class="auth-logo">🎓</div>
         <h2>Forgot your password?</h2>
-        <p class="hint">Enter your account email and we'll send you a reset token.</p>
+        <p class="hint">Enter your account email and we'll send you a link to choose a new password.</p>
 
         @if (!sent) {
           <div class="field">
@@ -22,17 +22,14 @@ import { AuthService } from '../core/auth.service';
           </div>
           @if (error) { <div class="err">{{ error }}</div> }
           <button class="btn btn-primary" style="width:100%;justify-content:center;" (click)="submit()" [disabled]="loading">
-            {{ loading ? 'Sending…' : 'Send reset token' }}
+            {{ loading ? 'Sending…' : 'Send reset link' }}
           </button>
         } @else {
           <div class="ok">{{ message }}</div>
-          @if (demoToken) {
-            <div class="demo-token">
-              <div class="demo-label">Demo build — reset token (normally emailed):</div>
-              <code>{{ demoToken }}</code>
-              <a class="btn btn-primary btn-sm" style="margin-top:12px;justify-content:center;width:100%;" [routerLink]="['/reset-password']" [queryParams]="{ token: demoToken }">Continue to reset →</a>
-            </div>
-          }
+          <p class="hint" style="margin:14px 0 0;">
+            The link is valid for one hour and can be used once. If it does not arrive, check
+            your spam folder — or ask your school office to reset the password for you.
+          </p>
         }
 
         <div class="row-links"><a routerLink="/login">← Back to sign in</a></div>
@@ -47,27 +44,26 @@ import { AuthService } from '../core/auth.service';
     .hint { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
     .err { background: var(--crit-tint); color: var(--crit-text); font-size: 13px; padding: 9px 12px; border-radius: 8px; margin-bottom: 14px; }
     .ok { background: var(--good-tint); color: var(--good-text); font-size: 13px; padding: 10px 12px; border-radius: 8px; }
-    .demo-token { margin-top: 14px; padding: 14px; border: 1px dashed var(--border); border-radius: 10px; }
-    .demo-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-    .demo-token code { font-size: 12px; word-break: break-all; }
     .row-links { text-align: center; margin-top: 18px; font-size: 13px; }
   `],
 })
 export class ForgotPasswordComponent {
   private readonly auth = inject(AuthService);
+
+  /** The school's palette, remembered from the last sign-in on this device. */
+  get theme(): string { return this.auth.signedOutTheme; }
   protected readonly router = inject(Router);
   email = '';
   loading = false;
   sent = false;
   error = '';
   message = '';
-  demoToken: string | null = null;
 
   submit(): void {
     if (!this.email.trim()) { this.error = 'Enter your email.'; return; }
     this.loading = true; this.error = '';
     this.auth.forgotPassword(this.email.trim()).subscribe({
-      next: r => { this.loading = false; this.sent = true; this.message = r.message; this.demoToken = r.demoToken; },
+      next: r => { this.loading = false; this.sent = true; this.message = r.message; },
       error: (e: HttpErrorResponse) => { this.loading = false; this.error = e.status === 0 ? 'Cannot reach the API.' : (e.error?.message ?? 'Request failed.'); },
     });
   }

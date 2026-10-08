@@ -9,19 +9,26 @@ namespace SchoolErp.Application.DTOs.Admin;
 public record CreateTeacherResultDto(long Id, string EmployeeCode, GeneratedCredentialsDto Credentials);
 
 public record TeacherListItemDto(
-    long Id, string EmployeeCode, string Name, string? Subject,
+    long Id, string EmployeeCode, string Name,
+    /// <summary>The subjects joined for display; <paramref name="Subjects"/> carries them apart.</summary>
+    string? Subject,
     string? Phone, string? Email, string Status, DateTime? JoiningDate,
     /// <summary>The section this teacher is class teacher of, or null when they own none.</summary>
-    string? ClassTeacherOf);
+    string? ClassTeacherOf,
+    /// <summary>Every subject this teacher can take — a teacher commonly takes more than one.</summary>
+    IReadOnlyList<string> Subjects);
 
 public record TeacherDetailDto(
     long Id, string EmployeeCode, string Name, string FirstName, string LastName,
+    /// <summary>The subjects joined for display; <paramref name="Subjects"/> carries them apart.</summary>
     string? Subject, string? Phone, string? Email, string? Qualification,
     string? Gender, DateTime? Dob, string? Address, string? City, string? State, string? Pincode,
     DateTime? JoiningDate, string Status,
     long? StateId, long? CityId,
     /// <summary>Each qualification separately; `Qualification` above is the joined summary.</summary>
-    IReadOnlyList<QualificationDto> Qualifications);
+    IReadOnlyList<QualificationDto> Qualifications,
+    /// <summary>Every subject this teacher can take.</summary>
+    IReadOnlyList<string> Subjects);
 
 /// <summary>
 /// One qualification a teacher holds. <paramref name="Institution"/> is the awarding university
@@ -40,7 +47,10 @@ public class SaveTeacherDto
 {
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
+    /// <summary>Legacy single value; ignored when <see cref="Subjects"/> is supplied.</summary>
     public string? Subject { get; set; }
+    /// <summary>Every subject this teacher can take, by name.</summary>
+    public List<string> Subjects { get; set; } = new();
     public string? Phone { get; set; }
     public string? Email { get; set; }
     /// <summary>Legacy single value; ignored when <see cref="Qualifications"/> is supplied.</summary>

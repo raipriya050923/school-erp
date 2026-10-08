@@ -17,6 +17,7 @@ public record SchoolDetailDto(
     string Subdomain,
     string Email,
     string Phone,
+    string? Address,
     string? City,
     string? State,
     string? Country,
@@ -24,6 +25,8 @@ public record SchoolDetailDto(
     string? AffiliationBoard,
     string Currency,
     string Timezone,
+    /// <summary>Shell palette: classic | brand | forest | mist.</summary>
+    string Theme,
     string Status,
     DateTime? OnboardedAt,
     DateTime CreatedAt,
@@ -68,11 +71,19 @@ public class CreateSchoolDto
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    /// <summary>Street address. Stored in `address_line1`.</summary>
+    public string? Address { get; set; }
     public string? City { get; set; }
     public string? State { get; set; }
     public string? Country { get; set; } = "Nepal";
     public string? PostalCode { get; set; }
     public string? AffiliationBoard { get; set; }
+    /// <summary>
+    /// Shell palette every portal of this school renders in: classic | brand | forest | mist.
+    /// Anything else falls back to classic rather than being rejected — a colour is not worth
+    /// failing an onboarding over.
+    /// </summary>
+    public string Theme { get; set; } = "classic";
     public string Status { get; set; } = "pending";
 
     /// <summary>Plan the school subscribes to. Required — a school with no subscription is
@@ -94,11 +105,19 @@ public class UpdateSchoolDto
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    /// <summary>Street address. Stored in `address_line1`.</summary>
+    public string? Address { get; set; }
     public string? City { get; set; }
     public string? State { get; set; }
     public string? Country { get; set; }
     public string? PostalCode { get; set; }
     public string? AffiliationBoard { get; set; }
+    /// <summary>
+    /// Shell palette every portal of this school renders in: classic | brand | forest | mist.
+    /// Anything else falls back to classic rather than being rejected — a colour is not worth
+    /// failing an onboarding over.
+    /// </summary>
+    public string Theme { get; set; } = "classic";
     public string Status { get; set; } = "active";
 
     /// <summary>Plan to move the school onto. 0 leaves the existing subscription untouched.</summary>

@@ -28,6 +28,9 @@ builder.Services.AddSwaggerGen(options =>
     };
     options.AddSecurityDefinition("Bearer", scheme);
     options.AddSecurityRequirement(new OpenApiSecurityRequirement { [scheme] = Array.Empty<string>() });
+
+    // Fills the mail-test example with the configured recipient, so Try it out works unedited.
+    options.SchemaFilter<SchoolErp.Api.Swagger.TestEmailExampleFilter>();
 });
 
 // Clean Architecture composition roots
@@ -98,7 +101,14 @@ app.UseStaticFiles();
 app.UseCors(CorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
+// After authentication, so the claim is there to read; before the endpoints, so a user still on
+// an issued password cannot reach one.
+app.UseMiddleware<PasswordChangeRequiredMiddleware>();
 app.MapControllers();
-app.MapGet("/", () => Results.Ok(new { service = "SchoolErp Super Admin API", status = "running" }));
+app.MapGet("/", () => Results.Ok(new { service = "SchoolErp Super Admin API V2", status = "running" }));
 
+// Blocks until the host is told to stop. Without it the program configures the whole pipeline
+// and then falls off the end of the file, which looks exactly like a clean exit: code 0, no
+// output, nothing listening.
 app.Run();
+

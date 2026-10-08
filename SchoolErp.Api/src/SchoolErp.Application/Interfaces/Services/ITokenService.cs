@@ -19,4 +19,6 @@ public record TokenIdentity(
     string UserType,
     string Username,
     long? StaffId,
-    long? StudentId);
+    long? StudentId,
+    /// <summary>True while the holder must still replace the password they were issued.</summary>
+    bool MustChangePassword = false);

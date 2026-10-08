@@ -11,8 +11,8 @@ public class SchoolRepository : ISchoolRepository
     public SchoolRepository(IDbConnectionFactory factory) => _factory = factory;
 
     private const string BaseColumns = @"
-        id, school_code, name, subdomain, custom_domain, logo_url, email, phone,
-        city, state, country, postal_code, country_id, state_id, city_id,
+        id, school_code, name, subdomain, custom_domain, logo_url, theme, email, phone,
+        address_line1, city, state, country, postal_code, country_id, state_id, city_id,
         timezone, working_days, currency, affiliation_board,
         status, onboarded_at, created_at, updated_at";
 
@@ -47,20 +47,21 @@ public class SchoolRepository : ISchoolRepository
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
         const string sql = @"
             INSERT INTO schools
-              (school_code, name, subdomain, email, phone, city, state, country,
+              (school_code, name, subdomain, email, phone, address_line1, city, state, country,
                postal_code, country_id, state_id, city_id,
-               affiliation_board, status, onboarded_at, created_at, updated_at)
+               affiliation_board, theme, status, onboarded_at, created_at, updated_at)
             VALUES
-              (@code, @name, @subdomain, @email, @phone, @city, @state, @country,
+              (@code, @name, @subdomain, @email, @phone, @address, @city, @state, @country,
                @postal, @countryId, @stateId, @cityId,
-               @board, @status, @onboarded, NOW(), NOW());";
+               @board, @theme, @status, @onboarded, NOW(), NOW());";
         return await DbHelper.InsertAsync(conn, sql, ct,
             ("@code", s.SchoolCode), ("@name", s.Name), ("@subdomain", s.Subdomain),
-            ("@email", s.Email), ("@phone", s.Phone), ("@city", s.City), ("@state", s.State),
+            ("@email", s.Email), ("@phone", s.Phone), ("@address", s.Address),
+            ("@city", s.City), ("@state", s.State),
             ("@country", s.Country), ("@postal", s.PostalCode),
             ("@countryId", (object?)s.CountryId), ("@stateId", (object?)s.StateId),
             ("@cityId", (object?)s.CityId),
-            ("@board", s.AffiliationBoard),
+            ("@board", s.AffiliationBoard), ("@theme", s.Theme),
             ("@status", s.Status), ("@onboarded", (object?)s.OnboardedAt));
     }
 
@@ -69,17 +70,26 @@ public class SchoolRepository : ISchoolRepository
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
         const string sql = @"
             UPDATE schools SET
-              name=@name, email=@email, phone=@phone, city=@city, state=@state,
-              country=@country, postal_code=@postal,
+              name=@name, email=@email, phone=@phone, address_line1=@address,
+              city=@city, state=@state, country=@country, postal_code=@postal,
               country_id=@countryId, state_id=@stateId, city_id=@cityId,
-              affiliation_board=@board, status=@status, updated_at=NOW()
+              affiliation_board=@board, theme=@theme, status=@status, updated_at=NOW()
             WHERE id=@id AND deleted_at IS NULL;";
         await DbHelper.ExecuteAsync(conn, sql, ct,
-            ("@name", s.Name), ("@email", s.Email), ("@phone", s.Phone), ("@city", s.City),
+            ("@name", s.Name), ("@email", s.Email), ("@phone", s.Phone), ("@address", s.Address),
+            ("@city", s.City),
             ("@state", s.State), ("@country", s.Country), ("@postal", s.PostalCode),
             ("@countryId", (object?)s.CountryId), ("@stateId", (object?)s.StateId),
             ("@cityId", (object?)s.CityId),
-            ("@board", s.AffiliationBoard), ("@status", s.Status), ("@id", s.Id));
+            ("@board", s.AffiliationBoard), ("@theme", s.Theme), ("@status", s.Status), ("@id", s.Id));
+    }
+
+    public async Task SetThemeAsync(long schoolId, string theme, CancellationToken ct = default)
+    {
+        using var conn = await _factory.CreateOpenConnectionAsync(ct);
+        await DbHelper.ExecuteAsync(conn,
+            "UPDATE schools SET theme=@t, updated_at=NOW() WHERE id=@id AND deleted_at IS NULL", ct,
+            ("@t", theme), ("@id", schoolId));
     }
 
     public async Task UpdateStatusAsync(long id, string status, CancellationToken ct = default)
@@ -189,8 +199,10 @@ public class SchoolRepository : ISchoolRepository
         Subdomain = r.GetString("subdomain"),
         CustomDomain = r.GetStringOrNull("custom_domain"),
         LogoUrl = r.GetStringOrNull("logo_url"),
+        Theme = r.GetStringOrNull("theme") ?? "classic",
         Email = r.GetString("email"),
         Phone = r.GetString("phone"),
+        Address = r.GetStringOrNull("address_line1"),
         City = r.GetStringOrNull("city"),
         State = r.GetStringOrNull("state"),
         Country = r.GetStringOrNull("country"),

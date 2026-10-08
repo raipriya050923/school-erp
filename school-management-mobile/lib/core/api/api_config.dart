@@ -22,6 +22,16 @@ class ApiConfig {
     return 'http://localhost:5204/api';
   }
 
+  /// True when the app is talking to a dev API on this machine rather than a
+  /// deployed one. The mirror of the web app's hostname check: it decides
+  /// whether the demo-account shortcuts are offered at all.
+  static bool get isLocal {
+    final Uri uri = Uri.parse(baseUrl);
+    return uri.host == 'localhost' ||
+        uri.host == '127.0.0.1' ||
+        uri.host == '10.0.2.2'; // the Android emulator's alias for the host
+  }
+
   static String get authBase => '$baseUrl/auth';
   static String get studentBase => '$baseUrl/student';
 }

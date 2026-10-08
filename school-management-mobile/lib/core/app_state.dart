@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../data/models.dart';
-import '../data/static_data.dart';
-
-/// App-wide, in-memory state. Everything here is seeded from [SchoolData] and
-/// lives only for the session — there is no persistence and no backend.
+/// App-wide, in-memory state: the theme choice and the notification
+/// preferences. Everything the user actually looks at comes from the API via
+/// [StudentStore]; this holds only the handful of settings that have no
+/// server-side home yet.
 class AppState extends ChangeNotifier {
   AppState._();
 
@@ -17,28 +16,6 @@ class AppState extends ChangeNotifier {
 
   void setDarkMode(bool value) {
     _themeMode = value ? ThemeMode.dark : ThemeMode.light;
-    notifyListeners();
-  }
-
-  // --------------------------------------------------------- notifications
-  final List<AppNotification> _notifications = SchoolData.notifications();
-  List<AppNotification> get notifications =>
-      List<AppNotification>.unmodifiable(_notifications);
-
-  int get unreadCount => _notifications.where((AppNotification n) => !n.read).length;
-
-  void markAsRead(int id) {
-    final int index = _notifications.indexWhere((AppNotification n) => n.id == id);
-    if (index == -1 || _notifications[index].read) return;
-    _notifications[index] = _notifications[index].copyWith(read: true);
-    notifyListeners();
-  }
-
-  void markAllAsRead() {
-    if (unreadCount == 0) return;
-    for (int i = 0; i < _notifications.length; i++) {
-      _notifications[i] = _notifications[i].copyWith(read: true);
-    }
     notifyListeners();
   }
 

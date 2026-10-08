@@ -13,7 +13,18 @@ public class LoginDto
 public record AuthUserDto(
     long Id, long? SchoolId, string UserType, string Role, string Username,
     string? Email, string FullName, string PortalPath, string Title,
-    string Token, DateTime ExpiresAtUtc);
+    string Token, DateTime ExpiresAtUtc,
+    /// <summary>
+    /// The school's shell palette, so every portal renders in its own colours. "classic" for a
+    /// platform user, who belongs to no school.
+    /// </summary>
+    string Theme,
+    /// <summary>
+    /// True while the holder is still on a password an administrator issued. The token carries
+    /// the same fact, and the API refuses everything but the change itself until it is cleared —
+    /// this is here so the client can route straight there rather than learn it from a 403.
+    /// </summary>
+    bool MustChangePassword);
 
 /// <summary>
 /// Credentials for a freshly created account, returned once. <paramref name="TemporaryPassword"/>
@@ -56,7 +67,12 @@ public class ForgotPasswordDto
     public string Email { get; set; } = string.Empty;
 }
 
-public record ForgotPasswordResultDto(string Message, string? DemoToken);
+/// <summary>
+/// Deliberately carries nothing but a message. The reset token used to be returned here as a
+/// "demo" convenience, which made the endpoint an account-takeover hole: anyone could post an
+/// address and be handed a working token for it. The token now only ever leaves by email.
+/// </summary>
+public record ForgotPasswordResultDto(string Message);
 
 public class ResetPasswordDto
 {

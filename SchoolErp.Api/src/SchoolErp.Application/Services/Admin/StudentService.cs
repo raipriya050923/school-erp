@@ -14,15 +14,17 @@ public class StudentService : IStudentService
     private readonly IAccountProvisioner _accounts;
     private readonly IGeographyService _geography;
     private readonly INotificationCenter _bell;
+    private readonly ISubscriptionGuard _entitlements;
 
     public StudentService(IStudentRepository repo, ICurrentSchool school, IAccountProvisioner accounts,
-        INotificationCenter bell, IGeographyService geography)
+        INotificationCenter bell, IGeographyService geography, ISubscriptionGuard entitlements)
     {
         _repo = repo;
         _school = school;
         _accounts = accounts;
         _bell = bell;
         _geography = geography;
+        _entitlements = entitlements;
     }
 
     /// <summary>
@@ -38,12 +40,36 @@ public class StudentService : IStudentService
         s.City = place.CityName ?? dto.City;
     }
 
-    public async Task<IReadOnlyList<StudentListItemDto>> ListAsync(string? search, string? className, CancellationToken ct = default)
+    /// <summary>
+    /// Largest page a caller may ask for, so a crafted page size cannot pull the whole roster in
+    /// one request. Set at the cap the unpaged query used to carry, because the screens that
+    /// fill a student picker still ask for everything in one go.
+    /// </summary>
+    private const int MaxPageSize = 500;
+
+    public async Task<PagedDto<StudentListItemDto>> ListAsync(
+        string? search, string? className, DateTime? admittedFrom, DateTime? admittedTo,
+        int page, int pageSize, CancellationToken ct = default)
     {
-        var rows = await _repo.GetAllAsync(_school.SchoolId, search, className, ct);
-        return rows.Select(s => new StudentListItemDto(
+        pageSize = Math.Clamp(pageSize <= 0 ? 25 : pageSize, 5, MaxPageSize);
+        page = Math.Max(1, page);
+        var (rows, total) = await _repo.GetPageAsync(
+            _school.SchoolId, search, className, admittedFrom, admittedTo, (page - 1) * pageSize, pageSize, ct);
+
+        // A caller can be stranded past the end — page 7 of a list that a filter has just cut to
+        // three. Serving the last page instead keeps the table from going blank with no way back.
+        var totalPages = total == 0 ? 1 : (int)Math.Ceiling(total / (double)pageSize);
+        if (page > totalPages)
+        {
+            page = totalPages;
+            (rows, total) = await _repo.GetPageAsync(
+                _school.SchoolId, search, className, admittedFrom, admittedTo, (page - 1) * pageSize, pageSize, ct);
+        }
+
+        var items = rows.Select(s => new StudentListItemDto(
             s.Id, s.AdmissionNo, $"{s.FirstName} {s.LastName}".Trim(), s.ClassName, s.SectionName,
             s.RollNo, s.GuardianName, s.GuardianPhone, s.FeeDue, s.Status, s.AdmissionDate)).ToList();
+        return new PagedDto<StudentListItemDto>(items, page, pageSize, total, totalPages);
     }
 
     public async Task<StudentDetailDto?> GetAsync(long id, CancellationToken ct = default)
@@ -53,13 +79,17 @@ public class StudentService : IStudentService
         return new StudentDetailDto(s.Id, s.AdmissionNo, $"{s.FirstName} {s.LastName}".Trim(),
             s.FirstName, s.LastName, s.ClassName, s.SectionName, s.RollNo, s.Gender, s.Dob,
             s.BloodGroup, s.Email, s.Phone, s.GuardianName, s.GuardianPhone, s.Address, s.City,
-            s.State, s.Pincode, s.PreviousSchool, s.AdmissionDate, s.FeeDue, s.Status,
+            s.State, s.Pincode, s.TcNo, s.PreviousSchool, s.AdmissionDate, s.FeeDue, s.Status,
             s.StateId, s.CityId);
     }
 
     public async Task<CreateStudentResultDto> CreateAsync(SaveStudentDto dto, CancellationToken ct = default)
     {
         Validate(dto);
+        // Checked before anything is written: an admission number and a login are
+        // issued below, and handing those out only to fail afterwards would leave
+        // the sequence advanced and an orphaned account behind.
+        await _entitlements.EnsureCanAdmitStudentAsync(_school.SchoolId, ct);
         var s = Map(new Student { SchoolId = _school.SchoolId }, dto);
         await ApplyPlaceAsync(s, dto, ct);
         s.AdmissionNo = await _repo.NextAdmissionNoAsync(_school.SchoolId, ct);
@@ -131,6 +161,7 @@ public class StudentService : IStudentService
         s.State = d.State;
         s.Pincode = d.Pincode;
         s.PreviousSchool = d.PreviousSchool;
+        s.TcNo = string.IsNullOrWhiteSpace(d.TcNo) ? null : d.TcNo.Trim();
         return s;
     }
 }

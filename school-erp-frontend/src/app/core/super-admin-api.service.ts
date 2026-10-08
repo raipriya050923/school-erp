@@ -31,11 +31,15 @@ export interface SchoolDetail {
   subdomain: string;
   email: string;
   phone: string;
+  /** Street address, as typed on the onboarding form. */
+  address: string | null;
   city: string | null;
   state: string | null;
   country: string | null;
   postalCode: string | null;
   affiliationBoard: string | null;
+  /** Shell palette every portal of this school renders in: classic | brand | forest | mist. */
+  theme: string;
   currency: string;
   timezone: string;
   status: string;
@@ -58,8 +62,12 @@ export interface SchoolDetail {
 
 export interface CreateSchool {
   name: string; email: string; phone: string;
+  /** Street address; the geography master supplies everything coarser than this. */
+  address?: string | null;
   city?: string | null; state?: string | null; country?: string | null;
   postalCode?: string | null; affiliationBoard?: string | null; status: string;
+  /** Shell palette: classic | brand | forest | mist. Unknown names fall back to classic. */
+  theme?: string;
   /** Required on create: a school with no subscription never appears under Subscriptions. */
   planId: number; billingCycle: string;
   /** Geography master ids; null when the typed name matched nothing. */

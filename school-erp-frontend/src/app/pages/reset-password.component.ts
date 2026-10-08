@@ -9,14 +9,22 @@ import { AuthService } from '../core/auth.service';
   standalone: true,
   imports: [FormsModule, RouterLink],
   template: `
-    <div class="auth-page">
+    <div class="auth-page" [attr.data-theme]="theme">
       <div class="auth-card">
         <div class="auth-logo">🎓</div>
         <h2>Reset password</h2>
-        <p class="hint">Enter the token from your email and choose a new password.</p>
+        <p class="hint">{{ fromLink ? 'Choose a new password for your account.' : 'Paste the link from your email, or the token it carries, then choose a new password.' }}</p>
 
         @if (!done) {
-          <div class="field"><label>Reset token</label><input class="input" [(ngModel)]="token" placeholder="token" /></div>
+          <!-- Arriving from the emailed link the token is already in hand; showing it as an
+               editable box invites people to "fix" a value they should never have to touch. -->
+          @if (!fromLink) {
+            <div class="field">
+              <label>Reset token</label>
+              <input class="input" [(ngModel)]="token" placeholder="Paste the link or token from your email" />
+              <div class="hint" style="margin:5px 0 0;">Opening the link from the email fills this in for you.</div>
+            </div>
+          }
           <div class="field"><label>New password</label><input class="input" type="password" [(ngModel)]="newPassword" placeholder="At least 6 characters" /></div>
           <div class="field"><label>Confirm password</label><input class="input" type="password" [(ngModel)]="confirm" (keyup.enter)="submit()" placeholder="Re-type new password" /></div>
           @if (error) { <div class="err">{{ error }}</div> }
@@ -43,6 +51,9 @@ import { AuthService } from '../core/auth.service';
 })
 export class ResetPasswordComponent implements OnInit {
   private readonly auth = inject(AuthService);
+
+  /** The school's palette, remembered from the last sign-in on this device. */
+  get theme(): string { return this.auth.signedOutTheme; }
   private readonly route = inject(ActivatedRoute);
   protected readonly router = inject(Router);
   token = '';
@@ -52,18 +63,38 @@ export class ResetPasswordComponent implements OnInit {
   done = false;
   error = '';
 
+  /** True when the token arrived on the URL, i.e. the reader followed the emailed link. */
+  fromLink = false;
+
   ngOnInit(): void {
     this.token = this.route.snapshot.queryParamMap.get('token') ?? '';
+    this.fromLink = !!this.token;
+  }
+
+  /**
+   * Accepts a pasted link as readily as a bare token. People copy the whole address out of the
+   * mail far more often than they pick the token out of it, and failing them for it is needless.
+   */
+  private cleanToken(): string {
+    const raw = this.token.trim();
+    const match = /[?&]token=([^&#\s]+)/.exec(raw);
+    return match ? decodeURIComponent(match[1]) : raw;
   }
 
   submit(): void {
-    if (!this.token.trim()) { this.error = 'The reset token is required.'; return; }
+    this.token = this.cleanToken();
+    if (!this.token) { this.error = 'The reset token is required.'; return; }
     if (this.newPassword.length < 6) { this.error = 'Password must be at least 6 characters.'; return; }
     if (this.newPassword !== this.confirm) { this.error = 'Passwords do not match.'; return; }
     this.loading = true; this.error = '';
-    this.auth.resetPassword(this.token.trim(), this.newPassword).subscribe({
+    this.auth.resetPassword(this.token, this.newPassword).subscribe({
       next: () => { this.loading = false; this.done = true; },
-      error: (e: HttpErrorResponse) => { this.loading = false; this.error = e.status === 0 ? 'Cannot reach the API.' : (e.error?.message ?? 'Reset failed.'); },
+      error: (e: HttpErrorResponse) => {
+        this.loading = false;
+        this.error = e.status === 0 ? 'Cannot reach the API.' : (e.error?.message ?? 'Reset failed.');
+        // An expired or spent link is not something retyping fixes, so offer the way out.
+        if (/expired|already been used|Invalid/i.test(this.error)) this.fromLink = false;
+      },
     });
   }
 }

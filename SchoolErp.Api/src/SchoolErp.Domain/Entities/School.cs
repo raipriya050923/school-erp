@@ -9,8 +9,19 @@ public class School
     public string Subdomain { get; set; } = string.Empty;
     public string? CustomDomain { get; set; }
     public string? LogoUrl { get; set; }
+    /// <summary>
+    /// The shell palette every portal of this school renders in: classic | brand | forest | mist.
+    /// A name rather than a colour — each is a designed set whose parts have to stay in step.
+    /// </summary>
+    public string Theme { get; set; } = "classic";
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    /// <summary>
+    /// Street address — the part of the address no master can supply. Maps to the
+    /// `address_line1` column; `address_line2` is left unused, as one line is all the
+    /// onboarding form collects.
+    /// </summary>
+    public string? Address { get; set; }
     // Free-text address, kept in step with the ids below. The ids are authoritative;
     // these remain because pre-master rows hold values that match no master entry.
     public string? City { get; set; }

@@ -1,6 +1,8 @@
 using System.Globalization;
 using SchoolErp.Application.Common;
 using SchoolErp.Application.DTOs.Student;
+using SchoolErp.Application.DTOs.Billing;
+using SchoolErp.Application.Services;
 using SchoolErp.Application.Interfaces.Persistence;
 using SchoolErp.Application.Interfaces.Services;
 using SchoolErp.Domain.Entities;
@@ -12,16 +14,34 @@ public class StudentPortalService : IStudentPortalService
     private readonly IStudentPortalRepository _repo;
     private readonly ITimetableRepository _timetable;
     private readonly ISchoolRepository _schools;
+    private readonly IFeeSubmissionRepository _submissions;
+    private readonly IFeeRepository _fees;
+    private readonly FeeReceiptBuilder _receipts;
+    private readonly INotificationCenter _bell;
+    private readonly ICurrentUser _user;
     private readonly ICurrentStudent _me;
 
     public StudentPortalService(IStudentPortalRepository repo, ITimetableRepository timetable,
-        ISchoolRepository schools, ICurrentStudent me)
+        ISchoolRepository schools, IFeeSubmissionRepository submissions, IFeeRepository fees,
+        FeeReceiptBuilder receipts, INotificationCenter bell,
+        ICurrentUser user, ICurrentStudent me)
     {
+        _fees = fees;
+        _receipts = receipts;
         _repo = repo;
         _timetable = timetable;
         _schools = schools;
+        _submissions = submissions;
+        _bell = bell;
+        _user = user;
         _me = me;
     }
+
+    /// <summary>Ways a school will accept money. Anything else is a typo, not a new channel.</summary>
+    private static readonly HashSet<string> PaymentMethods = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "upi", "bank_transfer", "cash", "cheque", "card", "esewa", "khalti", "online", "other",
+    };
 
     private async Task<Student> ProfileOrThrow(CancellationToken ct)
         => await _repo.GetProfileAsync(_me.SchoolId, _me.StudentId, ct)
@@ -129,10 +149,104 @@ public class StudentPortalService : IStudentPortalService
         return new StudentExamsDto(examName, total, fullTotal, pct, Grade(total, fullTotal == 0 ? 1 : fullTotal), results, upcoming);
     }
 
+    public async Task<IReadOnlyList<FeePaymentDto>> GetInvoicePaymentsAsync(long invoiceId, CancellationToken ct = default)
+    {
+        // The invoice has to be one of this student's before any payment on it is listed.
+        var mine = await _repo.GetFeesAsync(_me.SchoolId, _me.StudentId, ct);
+        if (mine.All(f => f.Id != invoiceId)) return Array.Empty<FeePaymentDto>();
+
+        var rows = await _fees.GetPaymentsAsync(_me.SchoolId, invoiceId, ct);
+        return rows.Select(p => new FeePaymentDto(
+            p.Id, $"RCPT-{(p.PaidDate ?? p.CreatedAt):yy}-{p.Id:D5}",
+            p.Amount, p.Method, p.Reference, p.PaidDate,
+            Math.Max(0m, p.InvoiceTotal - p.PaidToDate))).ToList();
+    }
+
+    public Task<FeeReceiptDto?> GetReceiptAsync(long paymentId, CancellationToken ct = default)
+        => _receipts.BuildAsync(_me.SchoolId, paymentId, _me.StudentId, ct);
+
     public async Task<IReadOnlyList<StudentFeeDto>> GetFeesAsync(CancellationToken ct = default)
     {
         var rows = await _repo.GetFeesAsync(_me.SchoolId, _me.StudentId, ct);
-        return rows.Select(i => new StudentFeeDto(i.InvoiceNo, i.Month, i.Amount, i.Paid, i.Amount - i.Paid, i.DueDate, i.Status)).ToList();
+        // One query for every waiting claim rather than one per invoice — a year's worth of
+        // months would otherwise be a round trip each.
+        var pending = (await _submissions.PendingInvoiceIdsAsync(_me.SchoolId, _me.StudentId, ct)).ToHashSet();
+        return rows.Select(i => new StudentFeeDto(
+            i.Id, i.InvoiceNo, i.Month, i.Amount, i.Paid, i.Amount - i.Paid, i.DueDate, i.Status,
+            pending.Contains(i.Id))).ToList();
+    }
+
+    /// <summary>
+    /// Queues a payment the family says they have made. Deliberately writes nothing to the
+    /// invoice: until somebody at the school matches it against a statement it is a claim, and
+    /// an invoice that settles itself on the payer's say-so is not a fee system.
+    /// </summary>
+    public async Task<long> SubmitFeePaymentAsync(long invoiceId, SubmitFeePaymentDto dto,
+        CancellationToken ct = default)
+    {
+        // Read through the student's own invoices, so an id belonging to another family
+        // resolves to nothing rather than to somebody else's bill.
+        var invoices = await _repo.GetFeesAsync(_me.SchoolId, _me.StudentId, ct);
+        var invoice = invoices.FirstOrDefault(i => i.Id == invoiceId)
+                      ?? throw new NotFoundException("That invoice is not on your account.");
+
+        var balance = invoice.Amount - invoice.Paid;
+        if (invoice.Status == "paid" || balance <= 0)
+            throw new ValidationException("That invoice is already settled.");
+        if (await _submissions.HasPendingForInvoiceAsync(_me.SchoolId, invoiceId, ct))
+            throw new ValidationException(
+                "A payment for this invoice is already waiting to be confirmed by the school.");
+
+        if (dto.Amount <= 0) throw new ValidationException("Enter the amount you paid.");
+        if (dto.Amount > balance)
+            throw new ValidationException($"That is more than the {balance:0.##} still owing on this invoice.");
+
+        var method = (dto.Method ?? string.Empty).Trim().ToLowerInvariant();
+        if (!PaymentMethods.Contains(method))
+            throw new ValidationException("Choose how you paid.");
+
+        // A date in the future cannot have happened, and one from last year is almost always a
+        // mistyped year — either way the office cannot match it to a statement.
+        var paidDate = (dto.PaidDate ?? DateTime.UtcNow).Date;
+        if (paidDate > DateTime.UtcNow.Date)
+            throw new ValidationException("The payment date cannot be in the future.");
+        if (paidDate < DateTime.UtcNow.Date.AddMonths(-12))
+            throw new ValidationException("The payment date looks too far back — check the year.");
+
+        // Cash handed over at the office has no reference to quote; anything that moved
+        // electronically does, and without it there is nothing to match.
+        var reference = string.IsNullOrWhiteSpace(dto.Reference) ? null : dto.Reference.Trim();
+        if (reference is null && method is not ("cash" or "other"))
+            throw new ValidationException("Enter the transaction or reference number.");
+
+        var id = await _submissions.CreateAsync(new FeePaymentSubmission
+        {
+            SchoolId = _me.SchoolId,
+            InvoiceId = invoiceId,
+            StudentId = _me.StudentId,
+            Amount = dto.Amount,
+            Method = method,
+            Reference = reference,
+            PaidDate = paidDate,
+            Note = string.IsNullOrWhiteSpace(dto.Note) ? null : dto.Note.Trim(),
+            SubmittedBy = _user.UserId,
+        }, ct);
+
+        var me = await ProfileOrThrow(ct);
+        await _bell.NotifyRoleAsync(_me.SchoolId, "school_admin",
+            "Fee payment to confirm",
+            $"{me.FirstName} {me.LastName} submitted {dto.Amount:0.##} for {invoice.Month ?? invoice.InvoiceNo} via {method}.",
+            "fee", "fee_payment_submission", id, ct);
+
+        return id;
+    }
+
+    public async Task<IReadOnlyList<StudentFeeSubmissionDto>> GetFeeSubmissionsAsync(CancellationToken ct = default)
+    {
+        var rows = await _submissions.GetForStudentAsync(_me.SchoolId, _me.StudentId, ct);
+        return rows.Select(r => new StudentFeeSubmissionDto(
+            r.Id, r.InvoiceId, r.InvoiceNo, r.Month, r.Amount, r.Method, r.Reference, r.PaidDate,
+            r.Status, r.CreatedAt, r.ReviewedAt, r.ReviewNote)).ToList();
     }
 
     public async Task<IReadOnlyList<StudentNoticeDto>> GetNoticesAsync(CancellationToken ct = default)

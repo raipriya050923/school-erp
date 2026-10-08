@@ -1,11 +1,13 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/api/api_http.dart';
+import '../../core/api/api_config.dart';
 import '../../core/api/session.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
-import '../../data/static_data.dart';
-import '../shell/app_shell.dart';
+import '../shell/role_shell.dart';
 
 /// Sign-in screen backed by the SchoolErp API. Credentials are verified against
 /// `POST /api/auth/login`; only student accounts are accepted in this build.
@@ -31,6 +33,20 @@ class _LoginScreenState extends State<LoginScreen> {
     _idController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  /// Only on a debug build pointed at a dev API on this machine. Two guards,
+  /// both required, mirroring the web login: a release build never offers these
+  /// however it is configured, and a debug build pointed at a real server does
+  /// not either.
+  static final bool _showDemoAccounts = kDebugMode && ApiConfig.isLocal;
+
+  void _fill(_DemoAccount account) {
+    setState(() {
+      _idController.text = account.username;
+      _passwordController.text = account.password;
+      _error = null;
+    });
   }
 
   Future<void> _signIn() async {
@@ -68,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 400),
-        pageBuilder: (_, _, _) => const AppShell(),
+        pageBuilder: (_, _, _) => const RoleShell(),
         transitionsBuilder: (_, Animation<double> animation, _, Widget child) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -224,40 +240,34 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.xxl),
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary500.withValues(
-                          alpha: isDark ? 0.12 : 0.08,
-                        ),
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        border: Border.all(
-                          color: AppColors.primary500.withValues(alpha: 0.25),
-                        ),
+                    // Local development only. The screens are all live against
+                    // the API now, so the old "sample data" notice that stood
+                    // here was simply untrue.
+                    if (_showDemoAccounts) ...<Widget>[
+                      const SizedBox(height: AppSpacing.xxl),
+                      const Divider(height: 1),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        'Demo accounts — tap to fill',
+                        style: theme.textTheme.labelMedium,
                       ),
-                      child: Row(
+                      const SizedBox(height: AppSpacing.md),
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.sm,
                         children: <Widget>[
-                          Icon(
-                            Icons.info_outline,
-                            size: 20,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Text(
-                              'Sign in with your student account. Once inside, the '
-                              'screens still show sample data — only login is live.',
-                              style: theme.textTheme.bodySmall,
+                          for (final _DemoAccount a in _demoAccounts)
+                            ActionChip(
+                              label: Text(a.label),
+                              onPressed: _busy ? null : () => _fill(a),
                             ),
-                          ),
                         ],
                       ),
-                    ),
+                    ],
                     const SizedBox(height: AppSpacing.xl),
                     Center(
                       child: Text(
-                        '© 2026 ${SchoolData.schoolName}',
+                        '© 2026 Nexa Fusion Technology',
                         style: theme.textTheme.labelSmall,
                       ),
                     ),
@@ -271,6 +281,28 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+
+/// A seeded login offered as a shortcut during local development.
+///
+/// The password is per account, not shared: accounts seeded with the database
+/// use Password@123, while any provisioned later through the admin UI take the
+/// Accounts:FixedPassword value instead. One shared password would silently
+/// fail for half of them.
+class _DemoAccount {
+  const _DemoAccount(this.label, this.username, this.password);
+
+  final String label;
+  final String username;
+  final String password;
+}
+
+const List<_DemoAccount> _demoAccounts = <_DemoAccount>[
+  _DemoAccount('Super Admin', 'pramod', 'Password@123'),
+  _DemoAccount('School Admin', 'anita', 'Password@123'),
+  _DemoAccount('Teacher', 'rajesh.k', 'Password@123'),
+  _DemoAccount('Student', 'aarav.t', 'Password@123'),
+  _DemoAccount('Parent', 'bikash.t', 'Password@123'),
+];
 
 class _Brand extends StatelessWidget {
   const _Brand({required this.isDark});
@@ -303,8 +335,22 @@ class _Brand extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text('School Portal', style: theme.textTheme.titleLarge),
-              Text(SchoolData.schoolName, style: theme.textTheme.bodySmall),
+              // The wordmark, set in the brand blue and a size up from a plain
+              // title: Devanagari hangs much of its mass below the shirorekha,
+              // so at a matched size it reads smaller than Latin would.
+              Text(
+                'पाठशाला',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: AppColors.primary600,
+                  height: 1.25,
+                ),
+              ),
+              Text(
+                'by Nexa Fusion Technology',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: AppColors.lightTextTertiary,
+                ),
+              ),
             ],
           ),
         ),

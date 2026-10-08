@@ -1,3 +1,4 @@
+import { FeeReceipt } from '../shared/fee-receipt.component';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -25,6 +26,70 @@ export interface AdminDashboard {
   attendanceTrend: AttendancePoint[];
   recentAdmissions: { name: string; className: string | null; sectionName: string | null; admissionDate: string | null }[];
   latestNotices: NoticeDto[];
+  /** Null for a school onboarded before plans existed. */
+  subscription: SubscriptionStatus | null;
+}
+
+/**
+ * The school's plan entitlement, computed server-side from the subscription's
+ * end date and the plan's seat count — not from the stored status word, which
+ * only changes when somebody edits the subscription.
+ */
+export interface SubscriptionStatus {
+  planId: number | null;
+  planName: string | null;
+  status: string;
+  isTrial: boolean;
+  endDate: string | null;
+  /** Negative once the end date has passed. */
+  daysRemaining: number | null;
+  studentCount: number;
+  /** Null means the plan is unlimited. */
+  maxStudents: number | null;
+  atStudentCap: boolean;
+  isLapsed: boolean;
+  lapseReason: string | null;
+  seatsRemaining: number | null;
+  isExpiringSoon: boolean;
+}
+
+/** The guardian on a student, and whether they have a login yet. */
+export interface ParentAccount {
+  guardianId: number;
+  name: string;
+  relation: string;
+  phone: string;
+  email: string | null;
+  username: string | null;
+  hasLogin: boolean;
+}
+
+export interface CreateParentLogin {
+  firstName?: string;
+  lastName?: string;
+  relation: string;
+  phone?: string;
+  email?: string;
+}
+
+/** One page of a list, with what a pager needs to know about the rest of the result. */
+export interface Paged<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+/** Everything the roster endpoint filters and pages by. */
+export interface StudentQuery {
+  search?: string;
+  className?: string;
+  /** ISO dates (yyyy-mm-dd); both ends are inclusive. */
+  admittedFrom?: string;
+  admittedTo?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface StudentListItem {
@@ -45,7 +110,10 @@ export interface StudentDetail extends StudentListItem {
   gender: string | null; dob: string | null; bloodGroup: string | null;
   email: string | null; phone: string | null;
   address: string | null; city: string | null; state: string | null; pincode: string | null;
-  previousSchool: string | null; admissionDate: string | null;
+  previousSchool: string | null;
+  /** Transfer certificate number from the school the student left. */
+  tcNo: string | null;
+  admissionDate: string | null;
   stateId: number | null; cityId: number | null;
 }
 export interface SaveStudent {
@@ -55,13 +123,18 @@ export interface SaveStudent {
   email?: string | null; guardianName?: string | null; guardianPhone?: string | null;
   address?: string | null; city?: string | null; state?: string | null; pincode?: string | null;
   previousSchool?: string | null;
+  /** Transfer certificate number from the school the student left. Optional. */
+  tcNo?: string | null;
   /** Geography master ids; null when the typed name matched nothing. */
   stateId?: number | null; cityId?: number | null;
 }
 
 export interface TeacherListItem {
   id: number; employeeCode: string; name: string;
+  /** The subjects joined for display; `subjects` carries them separately. */
   subject: string | null;
+  /** Every subject this teacher can take — a teacher commonly takes more than one. */
+  subjects: string[];
   phone: string | null; email: string | null; status: string;
   joiningDate: string | null;
   /** Section this teacher is class teacher of, e.g. "Grade 6 — A"; null when none. */
@@ -77,6 +150,8 @@ export interface TeacherDetail extends TeacherListItem {
   qualification: string | null;
   /** Each qualification separately, with its awarding body and year. */
   qualifications: QualificationDto[];
+  /** Every subject this teacher can take. */
+  subjects: string[];
   gender: string | null; dob: string | null;
   address: string | null; city: string | null; state: string | null; pincode: string | null;
   joiningDate: string | null;
@@ -84,7 +159,10 @@ export interface TeacherDetail extends TeacherListItem {
 }
 export interface SaveTeacher {
   firstName: string; lastName: string;
+  /** Legacy single value; ignored when `subjects` is supplied. */
   subject?: string | null;
+  /** Every subject this teacher can take, by name. */
+  subjects?: string[];
   phone?: string | null; email?: string | null;
   /** Legacy single value; ignored when `qualifications` is supplied. */
   qualification?: string | null;
@@ -108,8 +186,31 @@ export interface GeneratedCredentials {
   email: string | null;
   temporaryPassword: string;
 }
+/** Whether someone has a portal login, so a screen knows whether to offer a reset. */
+export interface LoginSummary {
+  hasLogin: boolean;
+  username: string | null;
+  /** A plain-English line about the account, or null when there is nothing worth saying. */
+  lastPasswordChangeNote: string | null;
+}
+
 export interface CreateTeacherResult { id: number; employeeCode: string; credentials: GeneratedCredentials; }
 export interface CreateStudentResult { id: number; admissionNo: string; rollNo: string | null; credentials: GeneratedCredentials; }
+
+/** What became of one row of an uploaded admission sheet. */
+export interface StudentImportRow {
+  row: number; name: string;
+  /** created | skipped | failed */
+  status: string;
+  message: string | null;
+  admissionNo: string | null; rollNo: string | null;
+  /** The login minted for the student — the password exists only in this response. */
+  username: string | null; temporaryPassword: string | null;
+}
+export interface StudentImportResult {
+  totalRows: number; created: number; skipped: number; failed: number;
+  rows: StudentImportRow[];
+}
 
 export interface SectionDto { id: number; classId: number; name: string; teacher: string | null; studentCount: number; }
 export interface ClassDto { id: number; name: string; sections: SectionDto[]; }
@@ -141,6 +242,21 @@ export interface ClassCurriculum {
 }
 
 export interface TimetablePeriod { periodNo: number; name: string; timeLabel: string; isBreak: boolean; }
+/**
+ * A period as the admin manages it. `periodNo` is its running position in the day (breaks
+ * included) — the same number the grid cells are keyed on — and `scheduledCount` is how many
+ * cells school-wide sit in it, so the screen can say what deleting it would strand.
+ */
+export interface Period {
+  id: number; periodNo: number; name: string;
+  startTime: string; endTime: string; durationMinutes: number;
+  isBreak: boolean; scheduledCount: number;
+}
+/** A period is entered as a start time plus a duration; the end time is derived server-side. */
+export interface SavePeriod {
+  name: string; startTime: string; durationMinutes: number; isBreak: boolean;
+}
+
 export interface TimetableCell {
   dayOfWeek: number; periodNo: number;
   subject: string | null; teacherStaffId: number | null; teacherName: string | null; room: string | null;
@@ -197,6 +313,9 @@ export interface AcademicYearDto {
 }
 export interface SaveAcademicYear { name: string; startDate: string; endDate: string; }
 
+/** One class and the subjects it studies this year — what it may be examined in. */
+export interface ClassSubjects { classId: number; className: string; subjects: string[]; }
+
 export interface SubjectDto { id: number; name: string; code: string | null; subjectType: string; isActive: boolean; }
 export interface SaveSubject { name: string; code?: string | null; subjectType: string; }
 
@@ -216,7 +335,13 @@ export interface ExamDto {
   paperCount: number; papers: ExamPaperDto[];
 }
 /** What an Add Subject run did, per class. */
-export interface AddPapersResult { created: number; scheduled: string[]; alreadyScheduled: string[]; }
+export interface AddPapersResult {
+  created: number;
+  scheduled: string[];
+  alreadyScheduled: string[];
+  /** Classes skipped because the subject is not on their curriculum. */
+  notTaught: string[];
+}
 
 /** One section's sign-off state for an exam — the admin's publish checklist. */
 export interface ExamApprovalDto {
@@ -226,20 +351,86 @@ export interface ExamApprovalDto {
 }
 export interface FeeInvoiceDto { id: number; invoiceNo: string | null; studentName: string | null; classLabel: string | null; month: string | null; amount: number; paid: number; balance: number; dueDate: string | null; status: string; }
 /** One fee head's share of an invoice total. */
+/** One payment on an invoice, before its receipt is opened. */
+export interface FeePaymentDto {
+  id: number; receiptNo: string; amount: number;
+  method: string | null; reference: string | null;
+  paidDate: string | null; balanceAfter: number;
+}
+
 export interface FeeInvoiceLineDto { description: string; amount: number; }
 export interface GenerateInvoicesResult {
   created: number;
   alreadyBilled: number;
   /** Classes skipped because the fee structure prices nothing for them. */
   unpricedClasses: string[];
+  /** Riders billed without their bus — no distance recorded, or past the last band. */
+  transportSkipped: string[];
+  /** One-time or yearly charges left off because the student already had them. */
+  repeatChargesSkipped: number;
+  /** Existing invoices for the month that gained the charges they were missing. */
+  toppedUp: number;
 }
 
 /** A charge the school levies. `inUse` counts the classes priced for it this year. */
 export interface FeeHeadDto {
   id: number; name: string; description: string | null;
-  frequency: string; isRefundable: boolean; isActive: boolean; inUse: number;
+  frequency: string;
+  /** 'class' takes the amount from the price grid; 'distance' takes it from the student. */
+  pricingMode: string;
+  isRefundable: boolean; isActive: boolean; inUse: number;
 }
-export interface SaveFeeHead { name: string; description?: string | null; frequency: string; isRefundable: boolean; }
+export interface SaveFeeHead {
+  name: string; description?: string | null; frequency: string;
+  pricingMode: string; isRefundable: boolean;
+}
+
+/* ---------------- transport, priced by distance ---------------- */
+
+/** One distance band. `fromKm` is the band below's ceiling, so the table reads "3 – 6 km". */
+export interface TransportSlabDto {
+  id: number; fromKm: number; upToKm: number; amount: number; riders: number;
+}
+export interface SaveTransportSlab { upToKm: number; amount: number; }
+
+/** A student on the assignment list, with what their distance currently earns. */
+export interface TransportStudentDto {
+  studentId: number;
+  name: string;
+  admissionNo: string;
+  className: string | null;
+  sectionName: string | null;
+  usesTransport: boolean;
+  distanceKm: number | null;
+  pickupPoint: string | null;
+  amountOverride: number | null;
+  note: string | null;
+  amount: number;
+  /** priced | not_riding | no_distance | beyond_slabs | no_slabs */
+  status: string;
+  matchedSlabKm: number | null;
+}
+export interface SaveTransportStudent {
+  studentId: number;
+  usesTransport: boolean;
+  distanceKm: number | null;
+  pickupPoint: string | null;
+  amountOverride: number | null;
+  note: string | null;
+}
+export interface TransportSummary {
+  riders: number; notRiding: number; needsDistance: number; beyondSlabs: number; monthlyTotal: number;
+}
+export interface TransportGrid {
+  academicYearId: number | null;
+  academicYearName: string | null;
+  feeHeadId: number | null;
+  feeHeadName: string | null;
+  feeHeadFrequency: string | null;
+  slabs: TransportSlabDto[];
+  students: TransportStudentDto[];
+  summary: TransportSummary;
+}
 export interface FeeStructureClass { classId: number; className: string; }
 export interface FeeStructureCell { classId: number; headId: number; amount: number; }
 /** Everything the Fee Structure grid draws for one academic year. */
@@ -254,6 +445,19 @@ export interface FeeStructureGrid {
 }
 export interface FeeSummaryDto { totalBilled: number; collected: number; outstanding: number; unpaid: number; overdue: number; }
 
+/**
+ * A payment a family says they have made, awaiting the office's confirmation. `invoiceBalance`
+ * travels with it so a reviewer can see what is still owed without opening the invoice.
+ */
+export interface FeeSubmissionDto {
+  id: number; invoiceId: number; invoiceNo: string | null;
+  studentName: string | null; classLabel: string | null; month: string | null;
+  amount: number; method: string; reference: string | null; paidDate: string;
+  note: string | null; status: string; submittedAt: string;
+  invoiceAmount: number; invoiceBalance: number;
+  reviewedAt: string | null; reviewNote: string | null;
+}
+
 /* ===================== Service ===================== */
 
 @Injectable({ providedIn: 'root' })
@@ -261,16 +465,46 @@ export class AdminApiService {
   private readonly http = inject(HttpClient);
   private readonly base = environment.adminApi;
 
+  /** The guardian on a student; null when the school has never recorded one. */
+  getParentAccount(studentId: number): Observable<ParentAccount | null> {
+    return this.http.get<ParentAccount | null>(`${this.base}/students/${studentId}/parent-login`);
+  }
+  /** Issues the login. The password comes back once and is never stored in plaintext. */
+  createParentLogin(studentId: number, dto: CreateParentLogin): Observable<GeneratedCredentials> {
+    return this.http.post<GeneratedCredentials>(`${this.base}/students/${studentId}/parent-login`, dto);
+  }
+
   getDashboard(): Observable<AdminDashboard> {
     return this.http.get<AdminDashboard>(`${this.base}/dashboard/stats`);
   }
 
   // Students
-  getStudents(search?: string, className?: string): Observable<StudentListItem[]> {
-    let p = new HttpParams();
-    if (search) p = p.set('search', search);
-    if (className) p = p.set('className', className);
-    return this.http.get<StudentListItem[]>(`${this.base}/students`, { params: p });
+  /** The sample workbook, as a blob so the browser can save it. */
+  studentImportTemplate(): Observable<Blob> {
+    return this.http.get(`${this.base}/students/import/template`, { responseType: 'blob' });
+  }
+  /** `dryRun` checks the sheet and writes nothing, so an admin can look before leaping. */
+  importStudents(file: File, dryRun: boolean): Observable<StudentImportResult> {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    return this.http.post<StudentImportResult>(`${this.base}/students/import`, body,
+      { params: new HttpParams().set('dryRun', dryRun) });
+  }
+
+  /**
+   * One page of the roster. Every filter is a query parameter rather than something applied to
+   * the rows afterwards — a page that was filtered again on arrival would show fewer students
+   * than the count beside the pager promises.
+   */
+  getStudents(opts: StudentQuery = {}): Observable<Paged<StudentListItem>> {
+    let p = new HttpParams()
+      .set('page', String(opts.page ?? 1))
+      .set('pageSize', String(opts.pageSize ?? 25));
+    if (opts.search) p = p.set('search', opts.search);
+    if (opts.className) p = p.set('className', opts.className);
+    if (opts.admittedFrom) p = p.set('admittedFrom', opts.admittedFrom);
+    if (opts.admittedTo) p = p.set('admittedTo', opts.admittedTo);
+    return this.http.get<Paged<StudentListItem>>(`${this.base}/students`, { params: p });
   }
   /** Next free roll number in a class/section — a preview; the server assigns the final one. */
   getNextRollNo(className: string, sectionName: string): Observable<{ rollNo: string }> {
@@ -299,6 +533,29 @@ export class AdminApiService {
   getTeacher(id: number): Observable<TeacherDetail> {
     return this.http.get<TeacherDetail>(`${this.base}/teachers/${id}`);
   }
+  /* ---- password resets ordered by the school admin ---- */
+
+  teacherLogin(id: number): Observable<LoginSummary> {
+    return this.http.get<LoginSummary>(`${this.base}/teachers/${id}/login`);
+  }
+  studentLogin(id: number): Observable<LoginSummary> {
+    return this.http.get<LoginSummary>(`${this.base}/students/${id}/login`);
+  }
+  /**
+   * Issues a new password. `newPassword` null lets the server generate one, which is the normal
+   * case. The password comes back in the response and exists nowhere else, so the caller must
+   * show it before discarding it.
+   */
+  resetTeacherPassword(id: number, newPassword: string | null): Observable<GeneratedCredentials> {
+    return this.http.post<GeneratedCredentials>(`${this.base}/teachers/${id}/reset-password`, { newPassword });
+  }
+  resetStudentPassword(id: number, newPassword: string | null): Observable<GeneratedCredentials> {
+    return this.http.post<GeneratedCredentials>(`${this.base}/students/${id}/reset-password`, { newPassword });
+  }
+  resetParentPassword(studentId: number, newPassword: string | null): Observable<GeneratedCredentials> {
+    return this.http.post<GeneratedCredentials>(`${this.base}/students/${studentId}/parent-login/reset-password`, { newPassword });
+  }
+
   createTeacher(dto: SaveTeacher): Observable<CreateTeacherResult> {
     return this.http.post<CreateTeacherResult>(`${this.base}/teachers`, dto);
   }
@@ -443,11 +700,36 @@ export class AdminApiService {
   getTeacherWeek(staffId: number): Observable<TeacherWeek> {
     return this.http.get<TeacherWeek>(`${this.base}/timetable/teacher/${staffId}`);
   }
+  /**
+   * Clears the grid — one day, or the whole week when `dayOfWeek` is null. The period columns
+   * and the school's working days are settings rather than content, so they survive a reset.
+   */
+  resetTimetable(dayOfWeek: number | null): Observable<{ cleared: number; scope: string }> {
+    return this.http.post<{ cleared: number; scope: string }>(
+      `${this.base}/timetable/reset`, { dayOfWeek });
+  }
+  /** The school's periods, each with the duration it runs for. */
+  getPeriods(): Observable<Period[]> {
+    return this.http.get<Period[]>(`${this.base}/timetable/periods`);
+  }
+  createPeriod(dto: SavePeriod): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/timetable/periods`, dto);
+  }
+  updatePeriod(id: number, dto: SavePeriod): Observable<void> {
+    return this.http.put<void>(`${this.base}/timetable/periods/${id}`, dto);
+  }
+  deletePeriod(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.base}/timetable/periods/${id}`);
+  }
   saveTimetableSlot(dto: SaveTimetableSlot): Observable<void> {
     return this.http.put<void>(`${this.base}/timetable/slot`, dto);
   }
 
   // Curriculum: class subjects + subject-teacher assignments
+  /** Every class with the subjects it studies — one call, used to gate exam scheduling. */
+  getSubjectsByClass(): Observable<ClassSubjects[]> {
+    return this.http.get<ClassSubjects[]>(`${this.base}/curriculum/subjects-by-class`);
+  }
   getClassCurriculum(classId: number): Observable<ClassCurriculum> {
     return this.http.get<ClassCurriculum>(`${this.base}/curriculum/classes/${classId}`);
   }
@@ -491,6 +773,24 @@ export class AdminApiService {
   recordFeePayment(invoiceId: number, dto: { amount: number; method: string; ref?: string; paymentDate: string }): Observable<void> {
     return this.http.post<void>(`${this.base}/fees/invoices/${invoiceId}/payments`, dto);
   }
+  /** Payments families have declared. Pending first, oldest first within that. */
+  feeSubmissions(status?: string): Observable<FeeSubmissionDto[]> {
+    let p = new HttpParams();
+    if (status) p = p.set('status', status);
+    return this.http.get<FeeSubmissionDto[]>(`${this.base}/fees/submissions`, { params: p });
+  }
+  /** Approving records the money against the invoice; rejecting returns the note to the family. */
+  reviewFeeSubmission(id: number, approve: boolean, note: string | null): Observable<void> {
+    return this.http.post<void>(`${this.base}/fees/submissions/${id}/review`, { approve, note });
+  }
+  /** Payments taken against one invoice, oldest first — one receipt each. */
+  invoicePayments(invoiceId: number): Observable<FeePaymentDto[]> {
+    return this.http.get<FeePaymentDto[]>(`${this.base}/fees/invoices/${invoiceId}/payments`);
+  }
+  /** The printable receipt for one payment. */
+  paymentReceipt(paymentId: number): Observable<FeeReceipt> {
+    return this.http.get<FeeReceipt>(`${this.base}/fees/payments/${paymentId}/receipt`);
+  }
   invoiceLines(invoiceId: number): Observable<FeeInvoiceLineDto[]> {
     return this.http.get<FeeInvoiceLineDto[]>(`${this.base}/fees/invoices/${invoiceId}/lines`);
   }
@@ -511,6 +811,25 @@ export class AdminApiService {
     return this.http.post<{ copied: number }>(`${this.base}/fee-structure/copy`, { fromAcademicYearId, toAcademicYearId });
   }
   getFeeHeads(): Observable<FeeHeadDto[]> { return this.http.get<FeeHeadDto[]>(`${this.base}/fee-structure/heads`); }
+
+  /* ---- transport ---- */
+
+  transport(academicYearId?: number): Observable<TransportGrid> {
+    let p = new HttpParams();
+    if (academicYearId) p = p.set('academicYearId', academicYearId);
+    return this.http.get<TransportGrid>(`${this.base}/transport`, { params: p });
+  }
+  /** Replaces the whole band set — bands only mean anything as a scale. */
+  saveTransportSlabs(academicYearId: number | null, slabs: SaveTransportSlab[]): Observable<void> {
+    return this.http.put<void>(`${this.base}/transport/slabs`, { academicYearId, slabs });
+  }
+  /** Writes only the students listed; everyone else keeps what they had. */
+  saveTransportStudents(students: SaveTransportStudent[]): Observable<{ saved: number }> {
+    return this.http.put<{ saved: number }>(`${this.base}/transport/students`, { students });
+  }
+  copyTransportSlabs(fromAcademicYearId: number, toAcademicYearId: number): Observable<{ copied: number }> {
+    return this.http.post<{ copied: number }>(`${this.base}/transport/copy`, { fromAcademicYearId, toAcademicYearId });
+  }
   createFeeHead(dto: SaveFeeHead): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/fee-structure/heads`, dto); }
   updateFeeHead(id: number, dto: SaveFeeHead): Observable<void> { return this.http.put<void>(`${this.base}/fee-structure/heads/${id}`, dto); }
   setFeeHeadActive(id: number, value: boolean): Observable<void> {

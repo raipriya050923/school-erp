@@ -206,7 +206,8 @@ class _UpcomingCard extends StatelessWidget {
 }
 
 Color _percentColour(double percent) {
-  if (percent >= 80) return AppColors.primary600;
+  // Green tops the scale; the brand blue is the band below it.
+  if (percent >= 80) return AppColors.green;
   if (percent >= 60) return AppColors.blue;
   if (percent >= 40) return AppColors.amber;
   return AppColors.red;

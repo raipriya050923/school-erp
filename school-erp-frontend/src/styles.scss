@@ -8,6 +8,15 @@
   --brand-dark:   #1d4ed8;
   --brand-light:  #3b82f6;
   --brand-tint:   rgba(37, 99, 235, 0.10);
+  /* The accent's own glow. A palette redefines this with the rest of its accent, so a
+     green button does not cast a blue shadow. */
+  --brand-glow:   37, 99, 235;
+
+  /* The sign-in page's backdrop. Tokens rather than literals so a school's
+     palette carries through to the page people meet the product on. */
+  --hero-wash:    rgba(37, 99, 235, 0.13);
+  --hero-wash-2:  rgba(124, 58, 237, 0.10);
+  --hero-bg:      linear-gradient(160deg, #f2f7ff 0%, #eef4fd 55%, #f6f8fc 100%);
 
   --sidebar-bg:      #ffffff;
   --sidebar-border:  #e8ebf0;
@@ -50,6 +59,11 @@
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.10), 0 2px 4px -2px rgba(16, 24, 40, 0.06);
   --shadow-lg: 0 20px 40px -8px rgba(16, 24, 40, 0.22);
+
+  /* The पाठशाला wordmark. Kept as a token so the brand is set in one place, and
+     Inter stays ahead of it so a Latin descriptor beside the mark still matches
+     the rest of the UI. */
+  --font-brand: "Inter", "Noto Sans Devanagari", system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -73,13 +87,50 @@ a { color: var(--brand-dark); text-decoration: none; }
 
 ::selection { background: var(--brand-tint); }
 
+/* A read-only statement inside a dialog — used where a form would be, once the
+   thing it would create already exists. */
+.notice-box {
+  padding: 13px 15px;
+  border-radius: var(--radius-sm);
+  background: var(--info-tint);
+  color: var(--info-text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.notice-box code {
+  background: rgba(255, 255, 255, 0.65);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+/* ---------- Subscription notices ---------- */
+/* Sits above the dashboard's own content, so it uses the semantic tint/text
+   pairs rather than a card: an admin should register it as a status, not as
+   another panel of figures. */
+.sub-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 16px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.sub-banner b { display: block; font-weight: 700; margin-bottom: 1px; }
+.sub-banner .grow { flex: 1; }
+.sub-banner.warn { background: var(--warn-tint); border-color: rgba(250, 178, 25, 0.35); color: var(--warn-text); }
+.sub-banner.crit { background: var(--crit-tint); border-color: rgba(208, 59, 59, 0.30); color: var(--crit-text); }
+
 /* ---------- Portal layout ---------- */
 .layout { display: flex; min-height: 100vh; }
 
 .sidebar {
   width: 250px;
   flex: 0 0 250px;
-  background: var(--sidebar-bg);
+  background: linear-gradient(180deg, var(--sidebar-bg-top, var(--sidebar-bg)), var(--sidebar-bg));
   border-right: 1px solid var(--sidebar-border);
   display: flex;
   flex-direction: column;
@@ -91,16 +142,159 @@ a { color: var(--brand-dark); text-decoration: none; }
   transition: width 0.18s ease, flex-basis 0.18s ease;
 }
 
+/* The palette picker on the school form: a swatch of the rail with its active
+   pill sitting on it, which is the pair that actually distinguishes them. */
+.theme-picker { display: flex; flex-wrap: wrap; gap: 10px; }
+.theme-swatch {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 8px 8px 7px; border: 1.5px solid var(--border); border-radius: 10px;
+  background: var(--surface); cursor: pointer; font: inherit;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.theme-swatch:hover { border-color: var(--brand-light); }
+.theme-swatch.on { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-tint); }
+.theme-swatch:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.theme-chip {
+  width: 46px; height: 34px; border-radius: 7px; border: 1px solid var(--border);
+  display: flex; align-items: flex-end; padding: 5px 4px;
+}
+.theme-pill { display: block; width: 100%; height: 7px; border-radius: 3px; }
+.theme-name { font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
+.theme-swatch.on .theme-name { color: var(--brand-dark); }
+
+/* =====================================================
+   School palettes
+   -----------------------------------------------------
+   A school picks one; `schools.theme` stores the name and the layout stamps it
+   as data-theme on .layout. Only sidebar tokens are redefined — the page, the
+   cards and the brand accent stay put, so a palette changes the rail and
+   nothing else can drift.
+
+   The names are sets, not single colours: rail, hover, icon chip, active pill
+   and brand mark are tuned together, which is why the column stores a name
+   rather than letting a school post a hex value nobody checked for contrast.
+   ===================================================== */
+
+/* Each palette redefines the accent as well as the rail. `--brand` is declared on
+   :root and every control reads it through a token, so restating it on .layout
+   repaints buttons, links, focus rings, badges and the avatar together — a green
+   sidebar above a blue Save button is half a theme, not a theme. */
+
+/* --- Brand: the royal blue itself. Active item inverts to white, the only
+       palette where it does, because a blue pill on blue would vanish. --- */
+[data-theme="brand"] {
+  --sidebar-bg:      #1d4ed8;
+  --sidebar-bg-top:  #2563eb;
+  --sidebar-border:  rgba(255, 255, 255, 0.14);
+  --sidebar-text:    #cddcff;
+  --sidebar-hover:   rgba(255, 255, 255, 0.13);
+  --sidebar-name:    #ffffff;
+  --sidebar-dim:     #9dbaff;
+  --sidebar-chip:    rgba(255, 255, 255, 0.14);
+  --sidebar-chip-ink:#e2ecff;
+}
+[data-theme="brand"] .side-nav a.active {
+  background: #ffffff;
+  color: var(--brand-dark);
+  box-shadow: 0 5px 14px -3px rgba(0, 0, 0, 0.35);
+}
+[data-theme="brand"] .side-nav a.active .nav-icon { background: rgba(29, 78, 216, 0.12); color: var(--brand-dark); }
+/* The gradient tile would read as a smudge on its own colour. */
+[data-theme="brand"] .brand-mark { background: rgba(255, 255, 255, 0.16); box-shadow: none; }
+
+/* --- Forest: the traditional school green. The accent moves with it, or the
+       blue active pill would fight the ground. --- */
+[data-theme="forest"] {
+  --sidebar-bg:      #10362f;
+  --sidebar-bg-top:  #154439;
+  --sidebar-border:  rgba(255, 255, 255, 0.09);
+  --sidebar-text:    #a5c3ba;
+  --sidebar-hover:   rgba(255, 255, 255, 0.09);
+  --sidebar-name:    #ffffff;
+  --sidebar-dim:     #7ba396;
+  --sidebar-chip:    rgba(255, 255, 255, 0.08);
+  --sidebar-chip-ink:#9dc0b5;
+
+  /* The accent moves to green with it. Kept a shade darker than the rail's active
+     pill so text on a filled button clears AA against white. */
+  --brand:           #0f7a5e;
+  --brand-dark:      #05604a;
+  --brand-light:     #10a37a;
+  --brand-tint:      rgba(15, 122, 94, 0.10);
+  --brand-glow:      15, 122, 94;
+
+  /* Teal against the green rather than the blue-violet pair, which would read
+     as a different product's page. */
+  --hero-wash:       rgba(15, 122, 94, 0.14);
+  --hero-wash-2:     rgba(13, 148, 136, 0.10);
+  --hero-bg:         linear-gradient(160deg, #f0faf6 0%, #ecf7f2 55%, #f6faf8 100%);
+}
+[data-theme="forest"] .side-nav a.active {
+  background: linear-gradient(135deg, #0f9b76, #047857);
+  box-shadow: 0 6px 16px -4px rgba(4, 120, 87, 0.55);
+}
+[data-theme="forest"] .brand-mark {
+  background: linear-gradient(135deg, #0f9b76, #047857);
+  box-shadow: 0 4px 10px rgba(4, 120, 87, 0.35);
+}
+
+/* --- Mist: light, but not white. The one palette that keeps a light rail and
+       leans on the per-module icon hues instead. --- */
+[data-theme="mist"] {
+  --sidebar-bg:      #eef2f9;
+  --sidebar-bg-top:  #f5f8fd;
+  --sidebar-border:  #dde4f0;
+  --sidebar-text:    #465063;
+  --sidebar-hover:   #e2e9f6;
+  --sidebar-name:    var(--brand-dark);
+  --sidebar-dim:     #7c869a;
+  --sidebar-chip:    #ffffff;
+  --sidebar-chip-ink:#5b6577;
+  --hero-bg:         linear-gradient(160deg, #f4f7fd 0%, #eff3fa 55%, #f7f9fc 100%);
+}
+
+/* Dark rails hover toward white; the classic light rail keeps its dark ink. */
+[data-theme="brand"], [data-theme="forest"] {
+  --sidebar-hover-ink: #ffffff;
+  --sidebar-chip-hover: rgba(255, 255, 255, 0.18);
+}
+[data-theme="mist"] { --sidebar-chip-hover: #ffffff; }
+
+/* --- Per-module icon hues. Seven identical grey chips give the eye nothing to
+       aim at; a colour per module makes the rail scannable at a glance. On a
+       dark rail the hue is the ink over a faint tint of itself; on a light one
+       it fills the chip. --- */
+[data-theme="brand"]  .side-nav a:not(.active) .nav-icon,
+[data-theme="forest"] .side-nav a:not(.active) .nav-icon,
+[data-theme="mist"]   .side-nav a:not(.active) .nav-icon { color: var(--mod-ink, var(--sidebar-chip-ink)); }
+[data-theme="mist"] .side-nav a:not(.active) .nav-icon { background: var(--mod-bg, var(--sidebar-chip)); }
+
+.side-nav a:nth-of-type(8n + 1) { --mod-ink: #93b4ff; --mod-bg: #e0ebff; }
+.side-nav a:nth-of-type(8n + 2) { --mod-ink: #c4a6ff; --mod-bg: #ede4ff; }
+.side-nav a:nth-of-type(8n + 3) { --mod-ink: #f6c470; --mod-bg: #fdeecd; }
+.side-nav a:nth-of-type(8n + 4) { --mod-ink: #5fd6c9; --mod-bg: #d6f3ef; }
+.side-nav a:nth-of-type(8n + 5) { --mod-ink: #6ddaa5; --mod-bg: #d7f2e5; }
+.side-nav a:nth-of-type(8n + 6) { --mod-ink: #ff9bb0; --mod-bg: #ffe1e7; }
+.side-nav a:nth-of-type(8n + 7) { --mod-ink: #a5a4fb; --mod-bg: #e2e2fc; }
+.side-nav a:nth-of-type(8n + 8) { --mod-ink: #7fd0f5; --mod-bg: #ddf1fd; }
+/* On a light rail the pale ink would disappear, so the chip carries a darker one. */
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 1) { --mod-ink: #2563eb; }
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 2) { --mod-ink: #7c3aed; }
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 3) { --mod-ink: #b45309; }
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 4) { --mod-ink: #0d9488; }
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 5) { --mod-ink: #047857; }
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 6) { --mod-ink: #be123c; }
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 7) { --mod-ink: #4338ca; }
+[data-theme="mist"] .side-nav a:nth-of-type(8n + 8) { --mod-ink: #0284c7; }
+
 /* ---------- Collapsed (icon-only rail, desktop) ---------- */
 .layout.collapsed .sidebar { width: 74px; flex-basis: 74px; }
 .layout.collapsed .brand { justify-content: center; padding: 18px 0; }
 .layout.collapsed .brand-text,
 .layout.collapsed .nav-section,
-.layout.collapsed .nav-label,
-.layout.collapsed .foot-text { display: none; }
+.layout.collapsed .nav-label { display: none; }
 .layout.collapsed .side-nav { padding: 10px 12px; }
 .layout.collapsed .side-nav a { justify-content: center; padding: 10px 0; gap: 0; }
-.layout.collapsed .sidebar-foot { justify-content: center; padding: 14px 0; }
 
 .brand {
   display: flex;
@@ -118,12 +312,12 @@ a { color: var(--brand-dark); text-decoration: none; }
   place-items: center;
   border-radius: 11px;
   background: linear-gradient(135deg, var(--brand-light), var(--brand-dark));
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.30);
+  box-shadow: 0 4px 12px rgba(var(--brand-glow), 0.30);
 }
-.brand-name { font-weight: 800; font-size: 18px; letter-spacing: -0.4px; color: var(--brand); }
+.brand-name { font-family: var(--font-brand); font-weight: 700; font-size: 20px; line-height: 1.35; color: var(--sidebar-name, var(--brand)); }
 .brand-portal {
   font-size: 10px;
-  color: var(--muted);
+  color: var(--sidebar-dim, var(--muted));
   text-transform: uppercase;
   letter-spacing: 1.1px;
   font-weight: 700;
@@ -136,7 +330,7 @@ a { color: var(--brand-dark); text-decoration: none; }
   font-weight: 700;
   letter-spacing: 1.2px;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--sidebar-dim, var(--muted));
 }
 
 .side-nav {
@@ -163,12 +357,12 @@ a { color: var(--brand-dark); text-decoration: none; }
   position: relative;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.side-nav a:hover { background: var(--sidebar-hover); color: var(--ink); }
+.side-nav a:hover { background: var(--sidebar-hover); color: var(--sidebar-hover-ink, var(--ink)); }
 .side-nav a.active {
   background: var(--sidebar-active);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 4px 10px rgba(var(--brand-glow), 0.28);
 }
 /* Icons sit in their own tinted square so the rail reads as a column, not ragged glyphs. */
 .nav-icon {
@@ -178,28 +372,49 @@ a { color: var(--brand-dark); text-decoration: none; }
   height: 30px;
   flex: none;
   border-radius: 9px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--sidebar-chip, #f3f4f6);
+  color: var(--sidebar-chip-ink, #6b7280);
   transition: background 0.15s ease, color 0.15s ease;
 }
-.side-nav a:hover .nav-icon { background: #e5e7eb; color: var(--ink); }
+.side-nav a:hover .nav-icon { background: var(--sidebar-chip-hover, #e5e7eb); color: var(--sidebar-hover-ink, var(--ink)); }
 .side-nav a.active .nav-icon { background: rgba(255, 255, 255, 0.22); color: #fff; }
 .nav-label { flex: 1; }
 
-.sidebar-foot {
-  padding: 14px 20px;
-  font-size: 11px;
-  color: var(--muted);
+/* Sign out, pinned to the foot of the rail. Sticky rather than simply last, so it stays on
+   screen when the module list is long enough to scroll. */
+.side-foot {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding: 10px 12px 12px;
+  background: var(--sidebar-bg);
   border-top: 1px solid var(--sidebar-border);
+}
+.side-logout {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sidebar-text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-.sidebar-foot .dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: #4ade80;
-  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
-}
+/* Red only on hover: a permanently red control at the foot of every screen reads as a
+   warning about the page, not an action you may take. */
+.side-logout:hover { background: var(--crit-tint); color: var(--crit-text); }
+.side-logout:hover .nav-icon { background: var(--crit-tint); color: var(--crit-text); }
+.side-logout:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.layout.collapsed .side-foot { padding: 10px 12px 12px; }
+.layout.collapsed .side-logout { justify-content: center; padding: 10px 0; gap: 0; }
+
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
@@ -299,9 +514,9 @@ a { color: var(--brand-dark); text-decoration: none; }
 }
 .bell-item:last-child { border-bottom: none; }
 .bell-item:hover { background: var(--surface-2); }
-.bell-item.unread { background: rgba(37, 99, 235, 0.045); }
+.bell-item.unread { background: rgba(var(--brand-glow), 0.045); }
 .bell-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: none; background: var(--muted); }
-.bell-dot.admission { background: #2563eb; }
+.bell-dot.admission { background: var(--brand); }
 .bell-dot.fee       { background: #0ca30c; }
 .bell-dot.school    { background: #7c3aed; }
 .bell-dot.ticket    { background: #d97706; }
@@ -327,6 +542,22 @@ a { color: var(--brand-dark); text-decoration: none; }
 .user-chip:hover { background: var(--surface-2); border-color: var(--border); }
 .user-chip.active { background: var(--surface-2); border-color: var(--border); }
 .user-chip .user-meta { text-align: right; }
+/* The signed-in role, as a badge rather than muted subtext. Which portal you are
+   in and what you are allowed to do is the thing people check before acting, so
+   it earns real contrast instead of 11px grey under the name. */
+.user-chip .role-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--brand-tint);
+  color: var(--brand-dark);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
 .user-chip .chevron { width: 16px; height: 16px; color: var(--muted); transition: transform 0.18s ease; }
 .user-chip .chevron.open { transform: rotate(180deg); }
 
@@ -380,7 +611,7 @@ a { color: var(--brand-dark); text-decoration: none; }
 .dd-sep { height: 1px; background: var(--border); margin: 6px 4px; }
 
 @media (max-width: 600px) {
-  .user-chip .user-meta { display: none; }
+  .user-chip .user-name { display: none; }
 }
 
 .content {
@@ -427,8 +658,7 @@ a { color: var(--brand-dark); text-decoration: none; }
   .layout.collapsed .sidebar { width: 250px; flex-basis: 250px; }
   .layout.collapsed .brand-text,
   .layout.collapsed .nav-section,
-  .layout.collapsed .nav-label,
-  .layout.collapsed .foot-text { display: block; }
+  .layout.collapsed .nav-label { display: block; }
   .layout.collapsed .side-nav a { justify-content: flex-start; padding: 9px 12px; gap: 12px; }
   .content { padding: 18px; }
   .topbar { padding: 0 18px; }
@@ -618,9 +848,131 @@ a { color: var(--brand-dark); text-decoration: none; }
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table tbody tr { transition: background 0.12s ease; }
 .data-table tbody tr:hover { background: #f8fafc; }
+
+/* ---------- Pickable row ----------
+   A row whose whole surface selects it — the pointer and the hover tint are the only
+   hint that it is clickable, so both matter. .on wins over :hover: the chosen row must
+   stay visibly chosen while the cursor is somewhere else in the table. */
+.data-table tbody tr.row-pick { cursor: pointer; }
+.data-table tbody tr.row-pick:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.data-table tbody tr.row-pick.on,
+.data-table tbody tr.row-pick.on:hover { background: var(--brand-tint); }
+
 .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .td-main { font-weight: 600; }
 .td-sub { font-size: 12px; color: var(--muted); }
+
+/* ---------- Exam subject schedule ----------
+   A list rather than a table: the papers belong to their class, and a table forced either
+   one collapsed row per class (hiding the papers) or a flat grid that repeated the class
+   name on every line. Each group is a class; each item is one paper. */
+.paper-group { border-top: 1px solid var(--border); }
+.paper-group:first-of-type { border-top: none; }
+
+.paper-group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--surface-2, #f8fafc);
+}
+.paper-group-head h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.paper-group-head .grow { min-width: 0; }
+
+.paper-list { list-style: none; margin: 0; padding: 0; }
+.paper-item {
+  display: grid;
+  /* date | subject | time+room | marks | remove */
+  grid-template-columns: 96px minmax(0, 1fr) minmax(0, auto) 56px 32px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.paper-item:first-child { border-top: none; }
+.paper-item:hover { background: #f8fafc; }
+
+.paper-when { display: flex; flex-direction: column; line-height: 1.3; }
+.paper-date { font-weight: 600; }
+.paper-subject { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.paper-where { white-space: nowrap; }
+.paper-marks { font-variant-numeric: tabular-nums; }
+
+.paper-clash { padding: 8px 18px 12px; }
+
+/* Stacked on narrow screens: five columns cannot hold their meaning at phone width. */
+@media (max-width: 640px) {
+  .paper-item {
+    grid-template-columns: minmax(0, 1fr) auto 32px;
+    grid-template-areas:
+      "when    marks remove"
+      "subject subject subject"
+      "where   where  where";
+    row-gap: 2px;
+  }
+  .paper-when { grid-area: when; flex-direction: row; gap: 6px; align-items: baseline; }
+  .paper-subject { grid-area: subject; }
+  .paper-where   { grid-area: where; }
+  .paper-marks   { grid-area: marks; }
+}
+
+/* ---------- Table pager ----------
+   Sits under a .table-wrap inside the same .card, so it reads as the table's
+   own footer rather than a separate control strip. */
+.table-pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 18px;
+  border-top: 1px solid var(--border);
+  background: #fcfcfd;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.table-pager .grow { flex: 1; }
+.table-pager .pager-size {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.table-pager .pager-count { font-variant-numeric: tabular-nums; }
+.pager-pages { display: flex; align-items: center; gap: 4px; }
+.pager-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.pager-btn:hover:not(:disabled):not(.active) { background: var(--neutral-tint); color: var(--ink); }
+.pager-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pager-btn.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+  cursor: default;
+}
+.pager-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* The gap marker between page ranges is not a target, just a hint. */
+.pager-gap { padding: 0 2px; color: var(--muted); user-select: none; }
 
 /* ---------- Badges ---------- */
 .badge {
@@ -661,11 +1013,11 @@ a { color: var(--brand-dark); text-decoration: none; }
 .btn-primary {
   background: var(--brand);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 2px 8px rgba(var(--brand-glow), 0.28);
 }
 .btn-primary:hover {
   background: var(--brand-dark);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 4px 12px rgba(var(--brand-glow), 0.35);
 }
 /* Every disabled button reads as disabled, not just the primary one. */
 .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
@@ -675,6 +1027,14 @@ a { color: var(--brand-dark); text-decoration: none; }
   cursor: not-allowed;
   box-shadow: none;
 }
+/* The confirming button of a destructive dialog — solid, so it does not read as the safe way out. */
+.btn-danger {
+  background: var(--crit-text);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(180, 35, 24, 0.28);
+}
+.btn-danger:hover { background: #93190f; box-shadow: 0 4px 12px rgba(180, 35, 24, 0.35); }
+.btn-danger:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
 .btn-ghost { background: var(--surface); color: var(--ink-2); border-color: var(--border); box-shadow: var(--shadow-xs); }
 .btn-ghost:hover { background: var(--neutral-tint); color: var(--ink); }
 .btn-sm { padding: 6px 11px; font-size: 12px; }
@@ -764,16 +1124,56 @@ a { color: var(--brand-dark); text-decoration: none; }
 .field-error { font-size: 12px; font-weight: 500; color: var(--crit-text); margin-top: -1px; }
 
 /* Repeating sub-form rows — a teacher's qualifications, and anything shaped like them.
-   The remove button sits on the baseline of the inputs, not of the header labels. */
-.qual-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
-.qual-row .field { flex: 1 1 0; min-width: 0; margin: 0; }
-.qual-row .qual-year { flex: 0 0 96px; }
-.qual-row .qual-head { font-size: 12px; }
-.qual-row .qual-remove { flex: 0 0 auto; margin-top: 6px; }
-.qual-row:first-child .qual-remove { margin-top: 28px; }
+   Column headings live in their own row so every input line stays the same height and the
+   remove buttons form a straight edge down the right. */
+.qual-list {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; background: var(--surface-2, #fafbfc);
+}
+.qual-row { display: flex; gap: 10px; align-items: center; }
+.qual-row + .qual-row { margin-top: 8px; }
+.qual-row .field { flex: 1 1 0; min-width: 0; margin: 0; gap: 4px; }
+.qual-row .qual-year, .qual-labels .qual-year { flex: 0 0 92px; }
+.qual-row .qual-remove { flex: 0 0 30px; }
+/* Row numbers make "row 2 is wrong" mean something when an error is reported. */
+.qual-no {
+  flex: 0 0 18px; font-size: 12px; font-weight: 600; color: var(--muted);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.qual-labels {
+  font-size: 12px; font-weight: 600; color: var(--ink-2);
+  margin-bottom: 6px; align-items: flex-end;
+}
+.qual-labels > span { flex: 1 1 0; min-width: 0; }
+.qual-labels .qual-no, .qual-labels .qual-remove { flex: 0 0 18px; }
+.qual-labels .qual-remove { flex: 0 0 30px; }
+
+/* "Add another row" inside a repeating group. Small and right-aligned: adding a row is an
+   occasional action, so it stays out of the way of the inputs it belongs to. */
+.add-row-bar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.add-row {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px;
+  border: 1px dashed var(--border); border-radius: 999px;
+  background: transparent; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--brand-dark);
+  transition: border-color .12s, background .12s, color .12s;
+}
+.add-row svg { width: 13px; height: 13px; flex: 0 0 13px; }
+.add-row:hover:not(:disabled) { border-color: var(--brand); background: var(--brand-tint); }
+.add-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.add-row:disabled { color: var(--muted); cursor: not-allowed; border-style: solid; }
+.add-row-count { font-size: 11.5px; color: var(--muted); }
+
+/* The subject picker turns red like any other invalid control. */
+.chip-picker.invalid-box {
+  border: 1px solid var(--crit-text); border-radius: 10px; padding: 8px;
+}
+
 @media (max-width: 700px) {
+  .qual-labels { display: none; }
   .qual-row { flex-wrap: wrap; }
-  .qual-row .qual-year { flex: 1 1 96px; }
+  .qual-row .qual-year { flex: 1 1 92px; }
 }
 .field-hint { font-size: 11.5px; color: var(--muted); margin-top: -1px; }
 
@@ -934,6 +1334,13 @@ a { color: var(--brand-dark); text-decoration: none; }
   z-index: 50;
   animation: fade-in 0.15s ease;
 }
+
+/* The receipt opens FROM another dialog — the list of receipts on an invoice — so it is the one
+   backdrop that has to outrank a plain one. Without this the two share z-index 50 and the winner
+   is whichever sits later in the template, which put the receipt behind the list that opened it.
+   Stated here rather than in the component so the two numbers sit together and cannot drift. */
+.receipt-backdrop { z-index: 60; }
+
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .modal {
   background: var(--surface);
@@ -944,6 +1351,9 @@ a { color: var(--brand-dark); text-decoration: none; }
   overflow: hidden;
   animation: modal-in 0.18s ease;
 }
+/* Forms with side-by-side fields and repeating rows — a teacher's qualifications need three
+   inputs plus a remove button on one line, which cramps at the default width. */
+.modal.wide { max-width: 980px; }
 @keyframes modal-in {
   from { transform: translateY(10px) scale(0.98); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
@@ -1041,3 +1451,15 @@ a { color: var(--brand-dark); text-decoration: none; }
 ::-webkit-scrollbar-thumb:hover { background: #aeb5c0; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 .sidebar::-webkit-scrollbar-thumb { background: #344054; border: 2px solid transparent; background-clip: content-box; }
+
+
+/* ---------- Printing a receipt ----------
+   Deliberately no @media print rules here.
+
+   Hiding the page with visibility:hidden leaves every element occupying its space, so a long
+   list still contributes its full height: printing a receipt from the invoice screen produced
+   one receipt and 161 blank sheets. display:none fixes the height but cannot be applied
+   wholesale either, because the receipt sits deep inside the same tree and would go with it.
+
+   FeeReceiptComponent therefore prints by copying the sheet into an isolated iframe, which has
+   no host page to fight. See its print(). */

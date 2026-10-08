@@ -46,6 +46,37 @@ public class AdminTimetableController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>Clears the grid — one day, or the whole week. Periods and working days survive.</summary>
+    [HttpPost("reset")]
+    public async Task<IActionResult> Reset([FromBody] ResetTimetableDto dto, CancellationToken ct)
+        => Ok(await _service.ResetAsync(dto, ct));
+
+    /* ---- period columns: how long the school day is and how it is divided ---- */
+
+    /// <summary>The school's periods, each with the duration it runs for.</summary>
+    [HttpGet("periods")]
+    public async Task<IActionResult> Periods(CancellationToken ct)
+        => Ok(await _service.GetPeriodsAsync(ct));
+
+    /// <summary>Adds a period. Its place in the day follows from its start time.</summary>
+    [HttpPost("periods")]
+    public async Task<IActionResult> CreatePeriod([FromBody] SavePeriodDto dto, CancellationToken ct)
+        => Ok(new { id = await _service.CreatePeriodAsync(dto, ct) });
+
+    [HttpPut("periods/{id:long}")]
+    public async Task<IActionResult> UpdatePeriod(long id, [FromBody] SavePeriodDto dto, CancellationToken ct)
+    {
+        await _service.UpdatePeriodAsync(id, dto, ct);
+        return NoContent();
+    }
+
+    [HttpDelete("periods/{id:long}")]
+    public async Task<IActionResult> DeletePeriod(long id, CancellationToken ct)
+    {
+        await _service.DeletePeriodAsync(id, ct);
+        return NoContent();
+    }
+
     [HttpPut("slot")]
     public async Task<IActionResult> SaveSlot([FromBody] SaveTimetableSlotDto dto, CancellationToken ct)
     {

@@ -113,6 +113,17 @@ internal static class DbHelper
         return r.IsDBNull(i) ? 0m : Convert.ToDecimal(r.GetValue(i));
     }
 
+    /// <summary>
+    /// A decimal column that means something different when it is NULL. <see cref="GetDecimal"/>
+    /// flattens NULL to zero, which is right for an amount and wrong for a measurement: an
+    /// unrecorded distance is not a distance of nought.
+    /// </summary>
+    public static decimal? GetDecimalOrNull(this IDataRecord r, string col)
+    {
+        var i = r.GetOrdinal(col);
+        return r.IsDBNull(i) ? null : Convert.ToDecimal(r.GetValue(i));
+    }
+
     public static bool GetBool(this IDataRecord r, string col)
     {
         var i = r.GetOrdinal(col);

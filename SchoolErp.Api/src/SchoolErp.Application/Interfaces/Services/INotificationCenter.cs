@@ -9,6 +9,10 @@ public interface INotificationCenter
     Task MarkReadAsync(long id, CancellationToken ct = default);
     Task MarkAllReadAsync(CancellationToken ct = default);
 
+    /// <summary>Notifies one account directly — used to answer something that account did.</summary>
+    Task NotifyUserAsync(long userId, long? schoolId, string title, string? body, string type,
+        string? refTable = null, long? refId = null, CancellationToken ct = default);
+
     /// <summary>Notifies every active user of a role — school-scoped, or platform staff when schoolId is null.</summary>
     Task NotifyRoleAsync(long? schoolId, string userType, string title, string? body, string type,
         string? refTable = null, long? refId = null, CancellationToken ct = default);

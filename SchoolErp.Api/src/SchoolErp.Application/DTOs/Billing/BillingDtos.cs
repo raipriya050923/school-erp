@@ -42,3 +42,35 @@ public class RecordPaymentDto
     public DateTime PaidAt { get; set; } = DateTime.UtcNow;
     public string? Remarks { get; set; }
 }
+
+/// <summary>
+/// A school's live entitlement: which plan, how long it has left, and how much
+/// of its student allowance is used. Drives the login gate, the admissions cap
+/// and the admin console's expiry warning.
+/// </summary>
+/// <param name="MaxStudents">Null means the plan is unlimited.</param>
+/// <param name="DaysRemaining">Negative once the end date has passed.</param>
+/// <param name="IsLapsed">True when login should be refused for this school.</param>
+public record SubscriptionStatusDto(
+    long? PlanId,
+    string? PlanName,
+    string Status,
+    bool IsTrial,
+    DateTime? EndDate,
+    int? DaysRemaining,
+    int StudentCount,
+    int? MaxStudents,
+    bool AtStudentCap,
+    bool IsLapsed,
+    string? LapseReason)
+{
+    /// <summary>Seats left, or null on an unlimited plan.</summary>
+    public int? SeatsRemaining => MaxStudents is { } cap ? Math.Max(0, cap - StudentCount) : null;
+
+    /// <summary>
+    /// True inside the notice window before expiry, so the console can warn the
+    /// admin while they can still do something about it.
+    /// </summary>
+    public bool IsExpiringSoon =>
+        !IsLapsed && DaysRemaining is { } d && d >= 0 && d <= 7;
+}

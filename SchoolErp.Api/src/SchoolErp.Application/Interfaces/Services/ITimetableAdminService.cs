@@ -17,6 +17,21 @@ public interface ITimetableAdminService
     /// Periods already set are left alone, and every suggestion can be changed afterwards.
     /// </summary>
     Task<AutoFillResultDto> AutoFillDayAsync(int dayOfWeek, CancellationToken ct = default);
+    /// <summary>
+    /// Clears the grid: one day, or the whole week. The period columns and working days are
+    /// settings rather than content, so a reset leaves them alone.
+    /// </summary>
+    Task<ResetTimetableResultDto> ResetAsync(ResetTimetableDto dto, CancellationToken ct = default);
+
+    /// <summary>The school's period columns, with the duration each one runs for.</summary>
+    Task<IReadOnlyList<PeriodDto>> GetPeriodsAsync(CancellationToken ct = default);
+    /// <summary>Adds a period; where it lands in the day follows from its start time.</summary>
+    Task<long> CreatePeriodAsync(SavePeriodDto dto, CancellationToken ct = default);
+    /// <summary>Retimes or renames a period, moving what is scheduled in it along with it.</summary>
+    Task UpdatePeriodAsync(long id, SavePeriodDto dto, CancellationToken ct = default);
+    /// <summary>Removes a period; one that still holds scheduled classes is refused.</summary>
+    Task DeletePeriodAsync(long id, CancellationToken ct = default);
+
     /// <summary>Sets one cell; a blank subject clears it.</summary>
     Task SaveSlotAsync(SaveTimetableSlotDto dto, CancellationToken ct = default);
 }

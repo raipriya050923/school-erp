@@ -51,13 +51,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
         top: false,
         child: StudentStoreBuilder(
           builder: (BuildContext context, StudentStore store) {
-            return ApiSection<List<TimetableSlot>>(
+            return ApiSection<StudentTimetable>(
               state: store.timetable,
               onRetry: () => store.loadTimetable(force: true),
               loadingHeight: 320,
-              builder: (BuildContext context, List<TimetableSlot> slots) =>
+              builder: (BuildContext context, StudentTimetable data) =>
                   _Timetable(
-                    slots: slots,
+                    data: data,
                     day: _day,
                     classLabel: store.profile.value?.classLabel,
                     onDaySelected: (int d) => setState(() => _day = d),
@@ -73,14 +73,14 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
 class _Timetable extends StatelessWidget {
   const _Timetable({
-    required this.slots,
+    required this.data,
     required this.day,
     required this.classLabel,
     required this.onDaySelected,
     required this.onRefresh,
   });
 
-  final List<TimetableSlot> slots;
+  final StudentTimetable data;
   final int day;
   final String? classLabel;
   final ValueChanged<int> onDaySelected;
@@ -88,10 +88,18 @@ class _Timetable extends StatelessWidget {
 
   List<TimetableSlot> _forDay(int d) {
     final List<TimetableSlot> today =
-        slots.where((TimetableSlot s) => s.dayOfWeek == d).toList()
+        data.slots.where((TimetableSlot s) => s.dayOfWeek == d).toList()
           ..sort((TimetableSlot a, TimetableSlot b) =>
               a.periodNo.compareTo(b.periodNo));
     return today;
+  }
+
+  /// The days this school actually runs, in order. A school that has not set
+  /// its week still needs a strip to draw, so fall back to Sunday-Friday.
+  List<int> get _days {
+    final List<int> days = data.workingDays.where((int d) => d >= 1 && d <= 7).toList()
+      ..sort();
+    return days.isEmpty ? const <int>[1, 2, 3, 4, 5, 6] : days;
   }
 
   @override
@@ -131,6 +139,7 @@ class _Timetable extends StatelessWidget {
           ),
         ),
         _DaySelector(
+          days: _days,
           selected: day,
           countFor: (int d) => _forDay(d).length,
           onSelected: onDaySelected,
@@ -145,10 +154,10 @@ class _Timetable extends StatelessWidget {
                     children: <Widget>[
                       EmptyState(
                         icon: Icons.event_busy_outlined,
-                        title: slots.isEmpty
+                        title: data.slots.isEmpty
                             ? 'No timetable published'
                             : 'No classes scheduled',
-                        message: slots.isEmpty
+                        message: data.slots.isEmpty
                             ? 'Your school has not published a timetable yet.'
                             : 'Enjoy the day off.',
                       ),
@@ -167,7 +176,7 @@ class _Timetable extends StatelessWidget {
                     itemCount: periods.length,
                     separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
                     itemBuilder: (BuildContext context, int index) =>
-                        _PeriodCard(slot: periods[index]),
+                        _PeriodCard(slot: periods[index], label: data.labelFor(periods[index].periodNo)),
                   ),
           ),
         ),
@@ -178,11 +187,15 @@ class _Timetable extends StatelessWidget {
 
 class _DaySelector extends StatelessWidget {
   const _DaySelector({
+    required this.days,
     required this.selected,
     required this.countFor,
     required this.onSelected,
   });
 
+  /// Only the days the school runs — a permanently empty Sunday column is not
+  /// information.
+  final List<int> days;
   final int selected;
   final int Function(int day) countFor;
   final ValueChanged<int> onSelected;
@@ -198,10 +211,10 @@ class _DaySelector extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: AppSpacing.page,
         physics: const BouncingScrollPhysics(),
-        itemCount: _dayNames.length,
+        itemCount: days.length,
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (BuildContext context, int index) {
-          final int day = index + 1;
+          final int day = days[index];
           final bool isSelected = day == selected;
           final int classCount = countFor(day);
 
@@ -257,9 +270,14 @@ class _DaySelector extends StatelessWidget {
 }
 
 class _PeriodCard extends StatelessWidget {
-  const _PeriodCard({required this.slot});
+  const _PeriodCard({required this.slot, required this.label});
 
   final TimetableSlot slot;
+
+  /// The school's own name for this column, e.g. "P4". Not the raw period_no:
+  /// that counts breaks, so it runs one ahead of the school's numbering from
+  /// the first break onwards.
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -289,7 +307,7 @@ class _PeriodCard extends StatelessWidget {
                           style: theme.textTheme.titleSmall?.copyWith(fontSize: 15),
                         ),
                         Text(
-                          'Period ${slot.periodNo}',
+                          label,
                           style: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
                         ),
                       ],

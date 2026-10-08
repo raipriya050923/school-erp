@@ -15,13 +15,15 @@ public class AdminDashboardService : IAdminDashboardService
     private readonly IFeeRepository _fees;
     private readonly IAttendanceRepository _attendance;
     private readonly ICurrentSchool _school;
+    private readonly ISubscriptionGuard _entitlements;
 
     /// <summary>How many marked days the dashboard attendance chart plots.</summary>
     private const int TrendDays = 30;
 
     public AdminDashboardService(IStudentRepository students, ITeacherRepository teachers,
         IClassRepository classes, INoticeRepository notices, ISchoolRepository schools,
-        IFeeRepository fees, IAttendanceRepository attendance, ICurrentSchool school)
+        IFeeRepository fees, IAttendanceRepository attendance, ICurrentSchool school,
+        ISubscriptionGuard entitlements)
     {
         _students = students;
         _teachers = teachers;
@@ -31,6 +33,7 @@ public class AdminDashboardService : IAdminDashboardService
         _fees = fees;
         _attendance = attendance;
         _school = school;
+        _entitlements = entitlements;
     }
 
     public async Task<AdminDashboardDto> GetAsync(CancellationToken ct = default)
@@ -69,8 +72,10 @@ public class AdminDashboardService : IAdminDashboardService
         var notices = (await _notices.GetAllAsync(sid, 3, ct))
             .Select(n => new NoticeDto(n.Id, n.Title, n.Body, n.Audience, n.PublishDate, n.CreatedBy, n.CreatedByName)).ToList();
 
+        var subscription = await _entitlements.GetStatusAsync(sid, ct);
+
         return new AdminDashboardDto(school.Name, academicYear, totalStudents, totalTeachers, onLeave,
             classes, sections, feesDue, billed, collected, overdue, unpaid,
-            attendanceToday, trend, recent, notices);
+            attendanceToday, trend, recent, notices, subscription);
     }
 }

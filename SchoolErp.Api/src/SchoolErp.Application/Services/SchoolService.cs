@@ -9,6 +9,14 @@ namespace SchoolErp.Application.Services;
 
 public class SchoolService : ISchoolService
 {
+    /// <summary>
+    /// Shell palettes a school may choose. Unknown names fall back to classic rather than being
+    /// rejected — a colour is not worth failing an onboarding over.
+    /// </summary>
+    private static readonly string[] ValidThemes = { "classic", "brand", "forest", "mist" };
+    private static string Theme(string? name) =>
+        ValidThemes.Contains(name?.Trim().ToLowerInvariant()) ? name!.Trim().ToLowerInvariant() : "classic";
+
     private static readonly string[] ValidStatuses = { "pending", "active", "suspended", "terminated" };
     private static readonly string[] ValidCycles = { "monthly", "yearly" };
     private readonly ISchoolRepository _schools;
@@ -71,8 +79,8 @@ public class SchoolService : ISchoolService
             ? _accountOptions.FixedPassword
             : null;
         return new SchoolDetailDto(s.Id, s.SchoolCode, s.Name, s.Subdomain, s.Email, s.Phone,
-            s.City, s.State, s.Country, s.PostalCode, s.AffiliationBoard, s.Currency, s.Timezone,
-            s.Status, s.OnboardedAt, s.CreatedAt,
+            s.Address, s.City, s.State, s.Country, s.PostalCode, s.AffiliationBoard, s.Currency, s.Timezone,
+            s.Theme, s.Status, s.OnboardedAt, s.CreatedAt,
             sub?.PlanId, sub?.PlanName, sub?.BillingCycle, sub?.Status, sub?.EndDate,
             admin?.Username, admin?.Email, demoPassword,
             s.CountryId, s.StateId, s.CityId);
@@ -110,6 +118,7 @@ public class SchoolService : ISchoolService
             Subdomain = slug,
             Email = dto.Email.Trim(),
             Phone = dto.Phone.Trim(),
+            Address = dto.Address?.Trim(),
             City = place.CityName ?? dto.City,
             State = place.StateName ?? dto.State,
             Country = place.CountryName ?? dto.Country,
@@ -118,6 +127,7 @@ public class SchoolService : ISchoolService
             StateId = place.StateId,
             CityId = place.CityId,
             AffiliationBoard = dto.AffiliationBoard,
+            Theme = Theme(dto.Theme),
             // 'pending' is still accepted for legacy records but is no longer offered or defaulted:
             // onboarding issues working credentials and starts the subscription clock immediately,
             // so a new school is live from the moment it is created.
@@ -185,7 +195,9 @@ public class SchoolService : ISchoolService
         var password = string.IsNullOrWhiteSpace(_accountOptions.FixedPassword)
             ? CredentialGenerator.Password()
             : _accountOptions.FixedPassword!;
-        await _users.UpdatePasswordAsync(admin.Id, _hasher.Hash(password), ct);
+        // mustChange: true — a platform admin issued this one and has read it, so the school
+        // admin must replace it before the account is theirs again.
+        await _users.UpdatePasswordAsync(admin.Id, _hasher.Hash(password), true, ct);
 
         return new GeneratedCredentialsDto(admin.Id, admin.FullName, admin.Username, admin.Email, password);
     }
@@ -205,6 +217,7 @@ public class SchoolService : ISchoolService
         s.Name = dto.Name.Trim();
         s.Email = dto.Email.Trim();
         s.Phone = dto.Phone.Trim();
+        s.Address = dto.Address?.Trim();
         s.City = place.CityName ?? dto.City;
         s.State = place.StateName ?? dto.State;
         s.Country = place.CountryName ?? dto.Country;
@@ -213,6 +226,7 @@ public class SchoolService : ISchoolService
         s.StateId = place.StateId;
         s.CityId = place.CityId;
         s.AffiliationBoard = dto.AffiliationBoard;
+        s.Theme = Theme(dto.Theme);
         if (ValidStatuses.Contains(dto.Status)) s.Status = dto.Status;
         await _schools.UpdateAsync(s, ct);
 

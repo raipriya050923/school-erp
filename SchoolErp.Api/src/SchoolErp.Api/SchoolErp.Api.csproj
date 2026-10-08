@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -7,6 +7,7 @@
     <!-- ICU must stay on: invariant globalization drops the timezone database, so IANA ids like
          Asia/Kathmandu fail to resolve and every school-local date silently becomes UTC. -->
     <InvariantGlobalization>false</InvariantGlobalization>
+    <UserSecretsId>0d81228d-89a0-412e-9491-7d0ac725d869</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

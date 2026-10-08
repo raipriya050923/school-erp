@@ -12,4 +12,12 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
     public string FullName { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Set when the account is minted, or when someone other than the holder resets it: the
+    /// password is one an administrator has seen, so it is not yet a secret. Cleared the moment
+    /// the holder chooses their own.
+    /// </summary>
+    public bool MustChangePassword { get; set; }
+    public DateTime? PasswordChangedAt { get; set; }
 }

@@ -55,10 +55,38 @@ public interface ITimetableRepository
     Task<IReadOnlyList<TimetablePeriod>> GetPeriodsAsync(long schoolId, CancellationToken ct = default);
     Task SeedDefaultPeriodsAsync(long schoolId, CancellationToken ct = default);
 
+    Task<TimetablePeriod?> GetPeriodAsync(long schoolId, long id, CancellationToken ct = default);
+    Task<long> InsertPeriodAsync(TimetablePeriod period, CancellationToken ct = default);
+    Task UpdatePeriodAsync(TimetablePeriod period, CancellationToken ct = default);
+    Task DeletePeriodAsync(long schoolId, long id, CancellationToken ct = default);
+    /// <summary>Rewrites sort_order so it matches the periods' chronological order.</summary>
+    Task SetPeriodSortOrderAsync(long schoolId, long id, int sortOrder, CancellationToken ct = default);
+
+    /* Slots are keyed on period_no — the period's running position, not its id — so adding,
+       moving or removing a period has to renumber the cells that sit after it, or the grid
+       silently shifts every subject into the wrong column. */
+
+    /// <summary>How many cells school-wide sit in one period position.</summary>
+    Task<int> CountSlotsAtPeriodAsync(long schoolId, int periodNo, CancellationToken ct = default);
+    /// <summary>Makes room at <paramref name="at"/>: everything from there on moves one later.</summary>
+    Task OpenSlotGapAsync(long schoolId, int at, CancellationToken ct = default);
+    /// <summary>Closes the hole left at <paramref name="at"/>: everything after it moves one earlier.</summary>
+    Task CloseSlotGapAsync(long schoolId, int at, CancellationToken ct = default);
+    /// <summary>Moves one position's cells to another, sliding everything in between.</summary>
+    Task MoveSlotPeriodAsync(long schoolId, int from, int to, CancellationToken ct = default);
+    /// <summary>Re-stamps the denormalised time label on a position's cells after its clock changes.</summary>
+    Task SetSlotTimeLabelAsync(long schoolId, int periodNo, string timeLabel, CancellationToken ct = default);
+
     /// <summary>Every filled cell for one section.</summary>
     Task<IReadOnlyList<TimetableSlot>> GetForSectionAsync(long schoolId, string className, string sectionName, CancellationToken ct = default);
     Task UpsertSlotAsync(TimetableSlot slot, CancellationToken ct = default);
     Task ClearSlotAsync(long schoolId, string className, string sectionName, int day, int period, CancellationToken ct = default);
+
+    /// <summary>
+    /// Empties the grid school-wide — one day, or the whole week when no day is given. Returns
+    /// how many cells went, since "nothing happened" and "cleared 42" look the same otherwise.
+    /// </summary>
+    Task<int> ClearSlotsAsync(long schoolId, int? dayOfWeek, CancellationToken ct = default);
 
     /// <summary>How many periods are scheduled school-wide on one day.</summary>
     Task<int> CountSlotsOnDayAsync(long schoolId, int dayOfWeek, CancellationToken ct = default);
@@ -89,7 +117,15 @@ public interface IFeeRepository
     Task<FeeInvoiceRow?> GetInvoiceAsync(long schoolId, long id, CancellationToken ct = default);
     /// <summary>What the invoice total was made up of, so the amount can be explained later.</summary>
     Task<IReadOnlyList<FeeInvoiceLine>> GetInvoiceLinesAsync(long schoolId, long invoiceId, CancellationToken ct = default);
-    Task RecordPaymentAsync(long schoolId, long invoiceId, decimal amount, string method, string? reference, DateTime date, CancellationToken ct = default);
+    /// <summary>Every payment taken against one invoice, oldest first.</summary>
+    Task<IReadOnlyList<FeePaymentRow>> GetPaymentsAsync(long schoolId, long invoiceId, CancellationToken ct = default);
+    /// <summary>
+    /// One payment with everything a receipt prints. Null when it belongs to another school, so
+    /// the receipt endpoints need no tenant check of their own.
+    /// </summary>
+    Task<FeePaymentRow?> GetPaymentAsync(long schoolId, long paymentId, CancellationToken ct = default);
+    /// <summary>Records money received and re-totals the invoice. Returns the new payment's id.</summary>
+    Task<long> RecordPaymentAsync(long schoolId, long invoiceId, decimal amount, string method, string? reference, DateTime date, CancellationToken ct = default);
     /// <summary>
     /// Raises one invoice per unbilled active student, priced from the fee structure for the
     /// current academic year. <paramref name="includeOneOff"/> adds the yearly and one-time heads
@@ -101,4 +137,34 @@ public interface IFeeRepository
     /// read paths call this first — otherwise an invoice stays 'unpaid' forever past its due date.
     /// </summary>
     Task<int> MarkOverdueAsync(long schoolId, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Payments declared by students and parents, before the school has confirmed them. Kept apart
+/// from <see cref="IFeeRepository"/> on purpose: nothing here contributes to an invoice's paid
+/// total until a reviewer turns it into a real payment.
+/// </summary>
+public interface IFeeSubmissionRepository
+{
+    Task<long> CreateAsync(FeePaymentSubmission s, CancellationToken ct = default);
+    Task<FeePaymentSubmission?> GetAsync(long schoolId, long id, CancellationToken ct = default);
+    /// <summary>One student's own submissions, newest first.</summary>
+    Task<IReadOnlyList<FeePaymentSubmission>> GetForStudentAsync(long schoolId, long studentId, CancellationToken ct = default);
+    /// <summary>The review queue, with the student and invoice joined in. Null status returns all.</summary>
+    Task<IReadOnlyList<FeePaymentSubmission>> ListAsync(long schoolId, string? status, CancellationToken ct = default);
+    /// <summary>
+    /// Whether this invoice already has a claim waiting. One at a time, so a parent who taps
+    /// twice does not queue the same transfer for the office to verify twice.
+    /// </summary>
+    Task<bool> HasPendingForInvoiceAsync(long schoolId, long invoiceId, CancellationToken ct = default);
+    /// <summary>How many of a student's submissions are still waiting, for the portal's own list.</summary>
+    Task<IReadOnlyList<long>> PendingInvoiceIdsAsync(long schoolId, long studentId, CancellationToken ct = default);
+    /// <summary>
+    /// Claims a pending submission for a decision. Returns the number of rows it moved: 0 means
+    /// another reviewer got there first, and the caller must not act on it.
+    /// </summary>
+    Task<int> MarkReviewedAsync(long schoolId, long id, string status, long reviewedBy, string? note,
+        CancellationToken ct = default);
+    /// <summary>Links a verified submission to the payment it became, once that exists.</summary>
+    Task SetPaymentIdAsync(long schoolId, long id, long paymentId, CancellationToken ct = default);
 }

@@ -18,11 +18,13 @@ import {
 } from './admin-txn.pages';
 import { AdSubjectsComponent } from './admin-subjects.page';
 import { AdFeeStructureComponent } from './admin-fee-structure.page';
+import { AdTransportComponent } from './admin-transport.page';
 import { AdStaffAttendanceComponent, AdLeaveComponent } from './admin-staff.pages';
 import { ProfilePageComponent } from '../../shared/profile.page';
 
 import { AdAcademicYearsComponent } from './academic-years.page';
 import { AdTimetableComponent } from './timetable.page';
+import { AdPeriodsComponent } from './periods.page';
 export const ADMIN_ROUTES: Routes = [
   {
     path: '',
@@ -43,6 +45,7 @@ export const ADMIN_ROUTES: Routes = [
         { label: 'Staff Attendance', path: 'staff-attendance', icon: 'user' },
         { label: 'Leave Requests', path: 'leave', icon: 'calendar' },
         { label: 'Fee Structure', path: 'fee-structure', icon: 'money' },
+        { label: 'Transport Fee', path: 'transport', icon: 'package' },
         { label: 'Fee Management', path: 'fees', icon: 'money' },
         { label: 'Examinations', path: 'exams', icon: 'exam' },
         { label: 'Notice Board', path: 'notices', icon: 'bell' },
@@ -58,11 +61,16 @@ export const ADMIN_ROUTES: Routes = [
       { path: 'subjects', component: AdSubjectsComponent },
       { path: 'academic-years', component: AdAcademicYearsComponent },
       { path: 'timetable', component: AdTimetableComponent },
+      // The timetable's own columns. A sibling path rather than a nested outlet — the grid is a
+      // screen, not a shell — so it still reads as /admin/timetable/periods and keeps Timetable
+      // lit in the sidebar, without earning a menu entry of its own.
+      { path: 'timetable/periods', component: AdPeriodsComponent },
       { path: 'attendance', component: AdAttendanceComponent },
       { path: 'attendance-report', component: AdAttendanceReportComponent },
       { path: 'staff-attendance', component: AdStaffAttendanceComponent },
       { path: 'leave', component: AdLeaveComponent },
       { path: 'fee-structure', component: AdFeeStructureComponent },
+      { path: 'transport', component: AdTransportComponent },
       { path: 'fees', component: AdFeesComponent },
       { path: 'exams', component: AdExamsComponent },
       { path: 'notices', component: AdNoticesComponent },

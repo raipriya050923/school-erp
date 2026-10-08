@@ -1,7 +1,13 @@
 namespace SchoolErp.Application.DTOs.Admin;
 
-/// <summary>A charge the school levies. <paramref name="InUse"/> counts the classes priced for it.</summary>
-public record FeeHeadDto(long Id, string Name, string? Description, string Frequency, bool IsRefundable, bool IsActive, int InUse);
+/// <summary>
+/// A charge the school levies. <paramref name="InUse"/> counts the classes priced for it.
+/// <paramref name="PricingMode"/> is <c>class</c> for a head priced on the grid and
+/// <c>distance</c> for one priced per student, whose column the grid shows but cannot edit.
+/// </summary>
+public record FeeHeadDto(
+    long Id, string Name, string? Description, string Frequency, string PricingMode,
+    bool IsRefundable, bool IsActive, int InUse);
 
 public class SaveFeeHeadDto
 {
@@ -9,6 +15,8 @@ public class SaveFeeHeadDto
     public string? Description { get; set; }
     /// <summary>one_time | monthly | quarterly | half_yearly | yearly.</summary>
     public string Frequency { get; set; } = "monthly";
+    /// <summary>class | distance. Distance-priced heads take their amount from the student.</summary>
+    public string PricingMode { get; set; } = "class";
     public bool IsRefundable { get; set; }
 }
 

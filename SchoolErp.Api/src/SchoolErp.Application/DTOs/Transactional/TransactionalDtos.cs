@@ -47,8 +47,15 @@ public class SaveExamPaperDto
     public int FullMarks { get; set; } = 100;
 }
 
-/// <summary>What an Add Subject run did, per class.</summary>
-public record AddPapersResultDto(int Created, IReadOnlyList<string> Scheduled, IReadOnlyList<string> AlreadyScheduled);
+/// <summary>
+/// What an Add Subject run did, per class.
+/// <paramref name="NotTaught"/> names classes skipped because the subject is not on their
+/// curriculum. Reported rather than silently dropped: scheduling a paper nobody can be assigned
+/// to teach produces an exam that cannot be marked.
+/// </summary>
+public record AddPapersResultDto(
+    int Created, IReadOnlyList<string> Scheduled, IReadOnlyList<string> AlreadyScheduled,
+    IReadOnlyList<string> NotTaught);
 /// <summary>
 /// One section's sign-off state for an exam. Publishing is gated on every section being
 /// approved, so this is the admin's checklist of who they are waiting on.
@@ -125,6 +132,29 @@ public record TeacherTimetableDto(
 /* -------- fees -------- */
 public record FeeInvoiceDto(long Id, string? InvoiceNo, string? StudentName, string? ClassLabel, string? Month, decimal Amount, decimal Paid, decimal Balance, DateTime? DueDate, string Status);
 public record FeeSummaryDto(decimal TotalBilled, decimal Collected, decimal Outstanding, int Unpaid, int Overdue);
+/// <summary>
+/// A payment a parent has declared, as the review queue shows it: who, how much, against which
+/// invoice, and what is still owed on it — enough to check against a bank statement without
+/// opening anything else.
+/// </summary>
+public record FeeSubmissionDto(
+    long Id, long InvoiceId, string? InvoiceNo, string? StudentName, string? ClassLabel,
+    string? Month, decimal Amount, string Method, string? Reference, DateTime PaidDate,
+    string? Note, string Status, DateTime SubmittedAt,
+    decimal InvoiceAmount, decimal InvoiceBalance,
+    DateTime? ReviewedAt, string? ReviewNote);
+
+/// <summary>
+/// A reviewer's decision. Approving records the money and settles the invoice by that much;
+/// rejecting leaves the invoice alone and sends the note back to the parent.
+/// </summary>
+public class ReviewFeeSubmissionDto
+{
+    public bool Approve { get; set; }
+    /// <summary>Required when rejecting — "rejected" with no reason cannot be acted on.</summary>
+    public string? Note { get; set; }
+}
+
 public class RecordFeePaymentDto { public decimal Amount { get; set; } public string Method { get; set; } = "cash"; public string? Ref { get; set; } public DateTime PaymentDate { get; set; } = DateTime.UtcNow; }
 public class GenerateInvoicesDto
 {
@@ -140,4 +170,15 @@ public record FeeInvoiceLineDto(string Description, decimal Amount);
 /// Outcome of an invoice run. <paramref name="UnpricedClasses"/> names classes skipped for having
 /// no amounts in the fee structure — the admin needs to be told, not left with a silent zero.
 /// </summary>
-public record GenerateInvoicesResultDto(int Created, int AlreadyBilled, IReadOnlyList<string> UnpricedClasses);
+/// <param name="TransportSkipped">
+/// Riders the run could not price — no distance recorded, or a distance past the last band. Kept
+/// apart from <paramref name="UnpricedClasses"/>: these students were invoiced, just without
+/// their bus, so the fix is on the Transport Fee screen rather than on Fee Structure.
+/// </param>
+public record GenerateInvoicesResultDto(
+    int Created, int AlreadyBilled, IReadOnlyList<string> UnpricedClasses,
+    IReadOnlyList<string> TransportSkipped,
+    /// <summary>One-time or yearly charges left off because the student already had them.</summary>
+    int RepeatChargesSkipped,
+    /// <summary>Existing invoices that gained the charges they were missing.</summary>
+    int ToppedUp);

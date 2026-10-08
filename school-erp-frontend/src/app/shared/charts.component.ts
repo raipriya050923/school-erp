@@ -53,10 +53,12 @@ export interface DonutSlice { label: string; value: number; color: string; }
     .chart { width: 100%; height: auto; display: block; overflow: visible; }
     .grid { stroke: #eef0f4; stroke-width: 1; }
     .axis { font-size: 11px; fill: #9299a5; font-family: inherit; }
-    .area { fill: rgba(37, 99, 235, 0.10); }
-    .line { fill: none; stroke: #2563eb; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    /* Through the accent tokens, so the attendance trend follows the school's palette
+       instead of staying blue under a green sidebar. */
+    .area { fill: var(--brand-tint); }
+    .line { fill: none; stroke: var(--brand); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
     .crosshair { stroke: #c7cdd6; stroke-width: 1; }
-    .dot { fill: #2563eb; stroke: #fff; stroke-width: 2; }
+    .dot { fill: var(--brand); stroke: #fff; stroke-width: 2; }
     .tip { fill: #111827; opacity: 0.95; }
     .tip-title { font-size: 11px; fill: #d1d5db; font-family: inherit; }
     .tip-value { font-size: 13px; font-weight: 700; fill: #fff; font-family: inherit; }

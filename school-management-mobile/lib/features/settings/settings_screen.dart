@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../../core/app_state.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/api_http.dart';
+import '../../core/api/session.dart';
+import '../../core/student_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/common.dart';
-import '../../data/static_data.dart';
+import '../profile/profile_screen.dart' show confirmSignOut;
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
   static const List<String> _languages = <String>[
     'English (US)',
     'English (UK)',
@@ -18,9 +27,20 @@ class SettingsScreen extends StatelessWidget {
     'German',
   ];
 
+  // The class shown under About comes from the student profile, so fetch it
+  // even when Settings is the first screen opened after launch.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => StudentStore.instance.loadProfile(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AppStateBuilder(
+    return StudentStoreBuilder(
+      builder: (BuildContext context, StudentStore store) => AppStateBuilder(
       builder: (BuildContext context, AppState state) {
         return Scaffold(
           appBar: AppBar(title: const Text('Settings')),
@@ -74,7 +94,7 @@ class SettingsScreen extends StatelessWidget {
                       icon: Icons.mail_outline_rounded,
                       color: AppColors.blue,
                       title: 'Email',
-                      subtitle: SchoolData.student.email,
+                      subtitle: Session.instance.user?.email ?? 'No email on your account',
                       value: state.preference('email'),
                       onChanged: (bool v) => state.setPreference('email', v),
                     ),
@@ -92,7 +112,7 @@ class SettingsScreen extends StatelessWidget {
                       icon: Icons.sms_outlined,
                       color: AppColors.orange,
                       title: 'SMS',
-                      subtitle: SchoolData.student.phone,
+                      subtitle: 'To the number your school has on file',
                       value: state.preference('sms'),
                       onChanged: (bool v) => state.setPreference('sms', v),
                     ),
@@ -154,10 +174,24 @@ class SettingsScreen extends StatelessWidget {
                       color: AppColors.primary500,
                       title: 'Two-factor authentication',
                       value: 'Not enabled',
-                      onTap: () =>
-                          showDemoSnack(context, 'Two-factor setup (demo)'),
+                      onTap: () => showSnack(
+                        context,
+                        'Two-factor sign-in is not available yet.',
+                      ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              // Staff portals end on this tab, so without a sign-out here a
+              // teacher or admin has no way out of the app.
+              OutlinedButton.icon(
+                onPressed: () => confirmSignOut(context),
+                icon: const Icon(Icons.logout_rounded, size: 18),
+                label: const Text('Sign out'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.critText,
+                  side: const BorderSide(color: AppColors.critText),
                 ),
               ),
               const SizedBox(height: AppSpacing.xxl),
@@ -165,19 +199,22 @@ class SettingsScreen extends StatelessWidget {
               AppCard(
                 child: Column(
                   children: <Widget>[
+                    // The student API exposes no school name or academic year,
+                    // so this shows what it does return rather than a fictional
+                    // a school name the API never sent.
                     InfoRow(
-                      label: 'School',
-                      value: SchoolData.schoolName,
+                      label: 'Signed in as',
+                      value: Session.instance.user?.fullName ?? '—',
+                      icon: Icons.person_outline_rounded,
+                    ),
+                    InfoRow(
+                      label: 'Class',
+                      value: store.profile.value?.classLabel ?? '—',
                       icon: Icons.school_outlined,
                     ),
                     InfoRow(
-                      label: 'Academic year',
-                      value: SchoolData.academicYear,
-                      icon: Icons.calendar_today_outlined,
-                    ),
-                    InfoRow(
                       label: 'App version',
-                      value: '1.0.0 (demo build)',
+                      value: '1.0.0',
                       icon: Icons.info_outline_rounded,
                     ),
                   ],
@@ -193,6 +230,7 @@ class SettingsScreen extends StatelessWidget {
           ),
         );
       },
+      ),
     );
   }
 
@@ -269,6 +307,8 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
   final TextEditingController _next = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
   bool _obscure = true;
+  bool _saving = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -278,13 +318,33 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ApiClient.instance.changePassword(
+        currentPassword: _current.text,
+        newPassword: _next.text,
+      );
+    } on ApiException catch (e) {
+      // The server is the only thing that knows whether the current password
+      // was right, so its message is shown rather than a generic failure.
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e.message;
+      });
+      return;
+    }
+    if (!mounted) return;
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Password updated (demo)')));
+      ..showSnackBar(const SnackBar(content: Text('Password updated.')));
   }
 
   @override
@@ -344,10 +404,28 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                 validator: (String? v) =>
                     v != _next.text ? 'Passwords do not match' : null,
               ),
+              if (_error != null) ...<Widget>[
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  _error!,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: AppColors.critText),
+                ),
+              ],
               const SizedBox(height: AppSpacing.xl),
               FilledButton(
-                onPressed: _submit,
-                child: const Text('Update password'),
+                // Disabled while in flight so a slow network cannot be
+                // double-submitted into two password changes.
+                onPressed: _saving ? null : _submit,
+                child: _saving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      )
+                    : const Text('Update password'),
               ),
             ],
           ),

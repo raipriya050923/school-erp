@@ -10,6 +10,7 @@ import '../../core/widgets/common.dart';
 import '../../data/api_models.dart';
 import '../attendance/attendance_screen.dart';
 import '../auth/login_screen.dart';
+import '../shell/role_shell.dart';
 import '../notifications/notifications_screen.dart';
 import '../results/results_screen.dart';
 import '../settings/settings_screen.dart';
@@ -207,7 +208,7 @@ class _ProfileBody extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xl),
         OutlinedButton.icon(
-          onPressed: () => _confirmLogout(context),
+          onPressed: () => confirmSignOut(context),
           style: OutlinedButton.styleFrom(
             foregroundColor: AppColors.red,
             side: const BorderSide(color: AppColors.red),
@@ -239,7 +240,7 @@ class _LinkTile extends StatelessWidget {
   }
 }
 
-Future<void> _confirmLogout(BuildContext context) async {
+Future<void> confirmSignOut(BuildContext context) async {
   final bool? confirmed = await showDialog<bool>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
@@ -264,7 +265,7 @@ Future<void> _confirmLogout(BuildContext context) async {
   // Drop the token and cached portal data before leaving, so the next account
   // cannot see the previous student's information.
   await Session.instance.clear();
-  StudentStore.instance.reset();
+  RoleShell.resetAllStores();
   if (!context.mounted) return;
 
   Navigator.of(context).pushAndRemoveUntil(

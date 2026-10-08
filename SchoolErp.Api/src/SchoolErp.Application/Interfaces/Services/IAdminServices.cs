@@ -9,7 +9,9 @@ public interface IAdminDashboardService
 
 public interface IStudentService
 {
-    Task<IReadOnlyList<StudentListItemDto>> ListAsync(string? search, string? className, CancellationToken ct = default);
+    Task<PagedDto<StudentListItemDto>> ListAsync(
+        string? search, string? className, DateTime? admittedFrom, DateTime? admittedTo,
+        int page, int pageSize, CancellationToken ct = default);
     Task<StudentDetailDto?> GetAsync(long id, CancellationToken ct = default);
     /// <summary>Admits the student and provisions their portal login, returning both.</summary>
     Task<CreateStudentResultDto> CreateAsync(SaveStudentDto dto, CancellationToken ct = default);

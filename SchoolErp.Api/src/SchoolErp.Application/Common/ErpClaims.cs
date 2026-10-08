@@ -11,4 +11,9 @@ public static class ErpClaims
     public const string StaffId = "staff_id";
     public const string StudentId = "student_id";
     public const string UserType = "user_type";
+    /// <summary>
+    /// Present and "1" while the holder is still on a password an administrator issued. Carried
+    /// in the token so enforcement happens at the API, not only in whichever client is asking.
+    /// </summary>
+    public const string MustChangePassword = "pwd_change";
 }

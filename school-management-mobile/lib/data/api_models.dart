@@ -200,6 +200,86 @@ class TimetableSlot {
   );
 }
 
+/// One column of the school's day, including breaks.
+///
+/// The API grew this list when the web timetable was fixed: period_no counts
+/// breaks, so a school with a break at 4 has teaching periods numbered 1,2,3,
+/// 5,6,7. Labelling a slot "Period 5" from its number alone is therefore wrong
+/// by one from the break onwards, and drops the last period of the day.
+class TimetablePeriod {
+  const TimetablePeriod({
+    required this.periodNo,
+    required this.name,
+    required this.timeLabel,
+    required this.isBreak,
+  });
+
+  final int periodNo;
+  final String name;
+  final String timeLabel;
+  final bool isBreak;
+
+  factory TimetablePeriod.fromJson(Map<String, dynamic> j) => TimetablePeriod(
+    periodNo: _int(j['periodNo']),
+    name: j['name'] as String? ?? '',
+    timeLabel: j['timeLabel'] as String? ?? '',
+    isBreak: j['isBreak'] == true,
+  );
+}
+
+/// The whole timetable payload.
+///
+/// This endpoint used to return a bare array of slots. It now returns an
+/// object carrying the school's real period list and its working days, so the
+/// grid can be drawn from what the school actually configured rather than from
+/// a hardcoded week.
+class StudentTimetable {
+  const StudentTimetable({
+    required this.periods,
+    required this.workingDays,
+    required this.slots,
+    this.className,
+    this.sectionName,
+  });
+
+  final List<TimetablePeriod> periods;
+
+  /// Day numbers the school runs, 1 = Sunday. Days outside it are not shown.
+  final List<int> workingDays;
+  final List<TimetableSlot> slots;
+  final String? className;
+  final String? sectionName;
+
+  static const StudentTimetable empty = StudentTimetable(
+    periods: <TimetablePeriod>[],
+    workingDays: <int>[],
+    slots: <TimetableSlot>[],
+  );
+
+  /// The configured name for a slot's column, e.g. "P4". Falls back to the raw
+  /// number for a school whose period list has not been set up.
+  String labelFor(int periodNo) {
+    for (final TimetablePeriod p in periods) {
+      if (p.periodNo == periodNo) return p.name;
+    }
+    return 'Period $periodNo';
+  }
+
+  factory StudentTimetable.fromJson(Map<String, dynamic> j) => StudentTimetable(
+    className: j['className'] as String?,
+    sectionName: j['sectionName'] as String?,
+    periods: (j['periods'] as List<dynamic>? ?? <dynamic>[])
+        .map((dynamic e) => TimetablePeriod.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    workingDays: (j['workingDays'] as List<dynamic>? ?? <dynamic>[])
+        .map((dynamic e) => _int(e))
+        .toList(),
+    slots: (j['slots'] as List<dynamic>? ?? <dynamic>[])
+        .map((dynamic e) => TimetableSlot.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+}
+
 // ----------------------------------------------------------------- homework
 
 class StudentHomework {

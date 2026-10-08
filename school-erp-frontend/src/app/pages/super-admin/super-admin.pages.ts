@@ -179,7 +179,19 @@ type DashboardStats = import('../../core/super-admin-api.service').DashboardStat
 /* =====================  SCHOOLS  ===================== */
 
 /** Every field on the school onboarding form is mandatory. */
-type SchoolFormField = 'name' | 'email' | 'phone' | 'city' | 'state' | 'affiliationBoard' | 'status';
+/**
+ * The palettes a school may pick, with the two colours that identify each at a glance: the rail
+ * itself and its active pill. Kept beside the form rather than fetched — they are design
+ * decisions in styles.scss, not data.
+ */
+const SCHOOL_THEMES = [
+  { key: 'classic', name: 'Classic', rail: '#ffffff',                              pill: '#2563eb', note: 'The light rail the product ships with' },
+  { key: 'brand',   name: 'Brand',   rail: 'linear-gradient(160deg,#2563eb,#1d4ed8)', pill: '#ffffff', note: 'Royal blue rail, white active item' },
+  { key: 'forest',  name: 'Forest',  rail: 'linear-gradient(160deg,#154439,#10362f)', pill: '#0f9b76', note: 'Deep green — the traditional school colour' },
+  { key: 'mist',    name: 'Mist',    rail: '#eef2f9',                              pill: '#2563eb', note: 'Pale blue-grey with coloured module icons' },
+];
+
+type SchoolFormField = 'name' | 'email' | 'phone' | 'address' | 'city' | 'state' | 'affiliationBoard' | 'status' | 'theme';
 
 /** local-part@domain.tld — no spaces, no consecutive dots, TLD of 2+ letters. */
 const EMAIL_RE = /^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
@@ -195,9 +207,11 @@ const SCHOOL_FIELD_LABELS: Record<SchoolFormField, string> = {
   name: 'School name',
   email: 'Email',
   phone: 'Phone',
+  address: 'Address',
   city: 'City',
   state: 'State / Province',
   affiliationBoard: 'Affiliation board',
+  theme: 'Portal colour',
   status: 'Status',
 };
 
@@ -286,6 +300,7 @@ const SCHOOL_FIELD_LABELS: Record<SchoolFormField, string> = {
             <div class="kv-row"><span class="kv-label">Subdomain</span><span class="kv-value">{{ s.subdomain }}.edunexus.io</span></div>
             <div class="kv-row"><span class="kv-label">Email</span><span class="kv-value">{{ s.email }}</span></div>
             <div class="kv-row"><span class="kv-label">Phone</span><span class="kv-value">{{ s.phone }}</span></div>
+            <div class="kv-row"><span class="kv-label">Address</span><span class="kv-value">{{ s.address || '—' }}</span></div>
             <div class="kv-row"><span class="kv-label">City</span><span class="kv-value">{{ s.city || '—' }}</span></div>
             <div class="kv-row"><span class="kv-label">State</span><span class="kv-value">{{ s.state || '—' }}</span></div>
             <div class="kv-row"><span class="kv-label">Board</span><span class="kv-value">{{ s.affiliationBoard || '—' }}</span></div>
@@ -340,6 +355,12 @@ const SCHOOL_FIELD_LABELS: Record<SchoolFormField, string> = {
               <input class="input" [class.invalid]="!!errors.name" [(ngModel)]="form.name" (ngModelChange)="revalidate('name')" />
               @if (errors.name) { <div class="field-error">{{ errors.name }}</div> }
             </div>
+            <div class="field">
+              <label>Address <span class="req">*</span></label>
+              <input class="input" [class.invalid]="!!errors.address" [(ngModel)]="form.address"
+                     (ngModelChange)="revalidate('address')" placeholder="Street, ward, landmark" />
+              @if (errors.address) { <div class="field-error">{{ errors.address }}</div> }
+            </div>
             <app-geo-picker [required]="true"
                             [invalidState]="!!errors.state" [invalidCity]="!!errors.city"
                             [countryId]="geo.countryId" [stateId]="geo.stateId" [cityId]="geo.cityId"
@@ -362,6 +383,29 @@ const SCHOOL_FIELD_LABELS: Record<SchoolFormField, string> = {
                 @if (errors.phone) { <div class="field-error">{{ errors.phone }}</div> }
               </div>
             </div>
+            <!--
+              The school's own colours. Stored as a palette name rather than a hex value: each is
+              a designed set — rail, hover, icon chip, active pill — that has to stay in step.
+            -->
+            <div class="field">
+              <label>Portal colour</label>
+              <div class="theme-picker">
+                @for (t of themes; track t.key) {
+                  <button type="button" class="theme-swatch" [class.on]="form.theme === t.key"
+                          (click)="form.theme = t.key" [attr.aria-pressed]="form.theme === t.key"
+                          [title]="t.note">
+                    <span class="theme-chip" [style.background]="t.rail">
+                      <span class="theme-pill" [style.background]="t.pill"></span>
+                    </span>
+                    <span class="theme-name">{{ t.name }}</span>
+                  </button>
+                }
+              </div>
+              <div class="field-hint">
+                Applies to every portal at this school — admin, teacher and student alike.
+              </div>
+            </div>
+
             <div class="form-row">
               <div class="field">
                 <label>Affiliation board <span class="req">*</span></label>
@@ -518,6 +562,7 @@ export class SaSchoolsComponent implements OnInit {
   submitted = false;
   formError = '';
   errors: Partial<Record<SchoolFormField, string>> = {};
+  readonly themes = SCHOOL_THEMES;
   editingId: number | null = null;
   viewing: SchoolDetail | null = null;
   /** Held only until the super admin dismisses the dialog — never persisted anywhere. */
@@ -625,7 +670,7 @@ export class SaSchoolsComponent implements OnInit {
     this.api.getSchool(id).subscribe({
       next: s => {
         this.editingId = id;
-        this.form = { name: s.name, email: s.email, phone: toTenDigits(s.phone), city: s.city ?? '', state: s.state ?? '', affiliationBoard: s.affiliationBoard ?? '', status: s.status };
+        this.form = { name: s.name, email: s.email, phone: toTenDigits(s.phone), address: s.address ?? '', city: s.city ?? '', state: s.state ?? '', affiliationBoard: s.affiliationBoard ?? '', status: s.status, theme: s.theme || 'classic' };
         this.geo = { countryId: s.countryId, stateId: s.stateId, cityId: s.cityId, country: s.country ?? '' };
         this.planId = s.planId;
         this.billingCycle = s.billingCycle ?? 'yearly';
@@ -737,7 +782,7 @@ export class SaSchoolsComponent implements OnInit {
   private resetValidation(): void { this.submitted = false; this.errors = {}; this.formError = ''; this.planError = ''; }
   showToast(m: string): void { this.toast = m; clearTimeout(this.timer); this.timer = setTimeout(() => this.toast = '', 3500); }
   private empty(): Record<SchoolFormField, string> {
-    return { name: '', email: '', phone: '', city: '', state: '', affiliationBoard: '', status: 'active' };
+    return { name: '', email: '', phone: '', address: '', city: '', state: '', affiliationBoard: '', status: 'active', theme: 'classic' };
   }
 }
 

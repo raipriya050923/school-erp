@@ -12,7 +12,27 @@ namespace SchoolErp.Api.Controllers.Admin;
 public class AdminTeachersController : ControllerBase
 {
     private readonly ITeacherService _service;
-    public AdminTeachersController(ITeacherService service) => _service = service;
+    private readonly IAccountResetService _accounts;
+
+    public AdminTeachersController(ITeacherService service, IAccountResetService accounts)
+    {
+        _service = service;
+        _accounts = accounts;
+    }
+
+    /// <summary>Whether this teacher has a portal login, so the screen knows what to offer.</summary>
+    [HttpGet("{id:long}/login")]
+    public async Task<IActionResult> Login(long id, CancellationToken ct)
+        => Ok(await _accounts.TeacherLoginAsync(id, ct));
+
+    /// <summary>
+    /// Issues a new password for the teacher's login. The response carries it in plaintext and
+    /// that is the only time it exists — the account stores a hash — so the caller must show it
+    /// once and not store it. The teacher is forced to replace it at their next sign-in.
+    /// </summary>
+    [HttpPost("{id:long}/reset-password")]
+    public async Task<IActionResult> ResetPassword(long id, [FromBody] ResetAccountPasswordDto? dto, CancellationToken ct)
+        => Ok(await _accounts.ResetTeacherAsync(id, dto ?? new ResetAccountPasswordDto(), ct));
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? search, CancellationToken ct)

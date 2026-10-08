@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { setPasswordGuard } from './core/auth.guard';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'login' },
@@ -9,6 +10,11 @@ export const routes: Routes = [
   {
     path: 'forgot-password',
     loadComponent: () => import('./pages/forgot-password.component').then(m => m.ForgotPasswordComponent),
+  },
+  {
+    path: 'set-password',
+    canActivate: [setPasswordGuard],
+    loadComponent: () => import('./pages/set-password.component').then(m => m.SetPasswordComponent),
   },
   {
     path: 'reset-password',
@@ -29,6 +35,13 @@ export const routes: Routes = [
   {
     path: 'student',
     loadChildren: () => import('./pages/student/student.routes').then(m => m.STUDENT_ROUTES),
+  },
+  {
+    // Parents see their child's portal. Same screens, same endpoints — the API
+    // scopes everything to the student_id on the parent's token — so this shares
+    // the student routes rather than copying them.
+    path: 'parent',
+    loadChildren: () => import('./pages/student/student.routes').then(m => m.PARENT_ROUTES),
   },
   { path: '**', redirectTo: 'login' },
 ];

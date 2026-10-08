@@ -239,7 +239,9 @@ class _RecentRow extends StatelessWidget {
 }
 
 Color _percentColour(int percent) {
-  if (percent >= 90) return AppColors.primary600;
+  // See the note in dashboard_screen: green tops the scale so the four bands
+  // stay distinguishable under a blue brand.
+  if (percent >= 90) return AppColors.green;
   if (percent >= 75) return AppColors.blue;
   if (percent >= 60) return AppColors.amber;
   return AppColors.red;
