@@ -64,22 +64,44 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-// CORS. By default allow any origin (set Cors:AllowAll=false to restrict to the
-// configured Cors:AllowedOrigins list instead).
-var allowAll = builder.Configuration.GetValue("Cors:AllowAll", true);
+// CORS. Cors:AllowAll=true opens the API to any origin, which is for local work
+// only; otherwise it is restricted to the Cors:AllowedOrigins list.
+//
+// Both branches used to call AllowAnyOrigin(), so AllowAll=false restricted
+// nothing and the configured list was never read. Anything that relied on that
+// will now be refused unless its origin is listed.
+var allowAll = builder.Configuration.GetValue("Cors:AllowAll", false);
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? Array.Empty<string>();
+
+// An origin is scheme + host + port and never ends in a slash. Browsers send it
+// that way and the comparison is exact, so "https://site.com/" in config would
+// silently match nothing — trimmed here rather than left as a trap.
+allowedOrigins = allowedOrigins
+    .Select(o => o.Trim().TrimEnd('/'))
+    .Where(o => o.Length > 0)
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(CorsPolicy, policy =>
     {
-        if (allowAll)
+        if (allowAll || allowedOrigins.Length == 0)
         {
+            // No list configured is treated as "not configured yet" rather than
+            // "block everything", so a missing setting cannot take an API down.
             policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
         }
         else
         {
-            policy.AllowAnyOrigin()
+            policy.WithOrigins(allowedOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod();
+            // No AllowCredentials: the browser clients authenticate with a
+            // bearer token in a header, not a cookie, so granting it would
+            // widen the policy for nothing.
         }
     });
 });
