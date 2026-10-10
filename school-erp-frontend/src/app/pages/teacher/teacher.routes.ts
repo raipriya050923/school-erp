@@ -27,7 +27,7 @@ export const TEACHER_ROUTES: Routes = [
         { label: 'Dashboard', path: 'dashboard', icon: 'grid' },
         { label: 'My Classes', path: 'classes', icon: 'presentation' },
         { label: 'Attendance', path: 'attendance', icon: 'clipboard' },
-        // Homework is hidden from the sidebar; the route below still resolves if linked to.
+        // Homework is hidden from the nav; the route below still resolves if linked to.
         { label: 'Marks Entry', path: 'marks', icon: 'exam' },
         { label: 'Class Results', path: 'results', icon: 'exam' },
         { label: 'My Timetable', path: 'timetable', icon: 'calendar' },

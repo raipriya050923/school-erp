@@ -399,7 +399,7 @@ import {
     .tt-cell:hover { border-color: var(--brand); background: var(--brand-tint); }
     .tt-cell.filled { border-style: solid; background: var(--tile-1); border-color: var(--tile-1-line); }
     /* The highlighted teacher's periods, so a day's load is visible at a glance. */
-    .tt-cell.highlight { background: var(--tile-4); border-color: #f0c36b; box-shadow: 0 0 0 2px rgba(217,119,6,0.25); }
+    .tt-cell.highlight { background: var(--warn-tint); border-color: var(--warn-text); box-shadow: 0 0 0 2px var(--warn-tint); }
     .tt-subject { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
     .tt-meta { display: block; font-size: 11.5px; color: var(--ink-2); margin-top: 1px; }
     .tt-add { display: block; text-align: center; color: var(--muted); font-size: 18px; line-height: 40px; }

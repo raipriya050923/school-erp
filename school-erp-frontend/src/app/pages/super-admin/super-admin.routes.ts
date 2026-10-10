@@ -22,9 +22,9 @@ export const SUPER_ADMIN_ROUTES: Routes = [
       nav: [
         { label: 'Dashboard', path: 'dashboard', icon: 'grid' },
         { label: 'Schools', path: 'schools', icon: 'school' },
-        { label: 'Subscription Plans', path: 'plans', icon: 'tag' },
-        { label: 'School Subscriptions', path: 'subscriptions', icon: 'package' },
-        { label: 'Billing & Payments', path: 'billing', icon: 'card' },
+        { label: 'Subscription Plans', path: 'plans', icon: 'tag', group: 'Subscriptions' },
+        { label: 'School Subscriptions', path: 'subscriptions', icon: 'package', group: 'Subscriptions' },
+        { label: 'Billing & Payments', path: 'billing', icon: 'card', group: 'Subscriptions' },
         { label: 'Support Tickets', path: 'tickets', icon: 'ticket' },
         { label: 'Geography', path: 'geography', icon: 'layers' },
       ],

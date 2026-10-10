@@ -5,7 +5,7 @@
   <title>पाठशाला — Complete School ERP &amp; Management Platform</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101828">
+  <meta name="theme-color" content="#14161c">
   <!--
     SVG first so the mark stays crisp at any size and follows the browser's own scaling;
     the .ico carries 16/32/48px rasters for browsers that ignore SVG icons.
@@ -21,9 +21,34 @@
     ship - Nirmala UI on Windows, Noto on Android, Devanagari MT on iOS - and the
     logo looks like a different logo on every device.
   -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+  <!--
+    The stored mode, applied before Angular boots. Without this the page paints
+    light first and then flips, which on a dark-mode phone at night is the one
+    moment the product is genuinely unpleasant to use. ThemeModeService owns the
+    same two names; they have to stay in step.
+  -->
+  <script>
+    (function () {
+      try {
+        var m = localStorage.getItem('erp.mode');
+        // Renamed. Rewritten here rather than only in the service, because
+        // someone who never signs in would otherwise carry the old name for ever.
+        if (m === 'midnight') { m = 'dim'; localStorage.setItem('erp.mode', m); }
+        if (['light', 'bright', 'dark', 'dim'].indexOf(m) < 0) {
+          // Nothing chosen here yet, so the device decides.
+          m = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-mode', m);
+        document.documentElement.setAttribute('data-scheme', m === 'dark' || m === 'dim' ? 'dark' : 'light');
+      } catch (e) {
+        document.documentElement.setAttribute('data-mode', 'light');
+        document.documentElement.setAttribute('data-scheme', 'light');
+      }
+    })();
+  </script>
   <app-root></app-root>
 </body>
 </html>

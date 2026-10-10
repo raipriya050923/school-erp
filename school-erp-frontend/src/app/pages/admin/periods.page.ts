@@ -12,7 +12,7 @@ import { AdminApiService, adminApiError, Period } from '../../core/admin-api.ser
  * clock already orders the day, and periods are not allowed to overlap.
  *
  * These are the timetable's columns, shared by every class, so the screen sits under
- * /admin/timetable rather than standing on its own in the sidebar.
+ * /admin/timetable rather than standing on its own in the masthead.
  */
 @Component({
   selector: 'app-ad-periods',

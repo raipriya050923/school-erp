@@ -5,7 +5,6 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../core/auth.service';
 import { IconComponent } from '../shared/icon.component';
 import { SchoolDoodlesComponent } from '../shared/school-doodles.component';
-import { PlayingKidsComponent } from '../shared/playing-kids.component';
 import { environment } from '../../environments/environment';
 
 /**
@@ -28,19 +27,18 @@ const isLocalDev = () => isDevMode() && !environment.production;
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, SchoolDoodlesComponent, PlayingKidsComponent],
+  imports: [FormsModule, RouterLink, IconComponent, SchoolDoodlesComponent],
   template: `
     <div class="login-wrap" [attr.data-theme]="theme">
       <div class="login-hero">
         <app-school-doodles />
-        <app-playing-kids />
 
         <div class="hero-inner">
           <div class="hero-brand">
             <span class="hero-logo"><app-icon name="cap" [size]="27" /></span>
             <div>
               <div class="hero-name">पाठशाला</div>
-              <div class="hero-company">by Nexa Fusion Technology</div>
+              <div class="hero-company">by KSS INFONET</div>
             </div>
           </div>
 
@@ -55,7 +53,7 @@ const isLocalDev = () => isDevMode() && !environment.production;
             <li class="t4"><span class="pt-icon">🔒</span><span><b>Secure by tenant</b>Every query scoped to your school — data never crosses over.</span></li>
           </ul>
 
-          <div class="hero-foot">© {{ year }} Nexa Fusion Technology · All rights reserved</div>
+          <div class="hero-foot">© {{ year }} KSS INFONET · All rights reserved</div>
         </div>
       </div>
 
@@ -101,7 +99,7 @@ const isLocalDev = () => isDevMode() && !environment.production;
             <a routerLink="/forgot-password">Forgot password?</a>
           </div>
 
-          <div class="panel-foot">Powered by <b>Nexa Fusion Technology</b></div>
+          <div class="panel-foot">Powered by <b>KSS INFONET</b></div>
 
           @if (showDemo) {
             <div class="demo-box">
@@ -128,11 +126,7 @@ const isLocalDev = () => isDevMode() && !environment.production;
       position: relative;
       overflow: hidden;
       display: flex; align-items: center; justify-content: center;
-      /* Bottom padding reserves the strip the playing figures occupy, so the
-         copy column can never run into them. Both are given up together at the
-         breakpoints below - holding space for a scene that is not drawn would
-         just push the content off-centre. */
-      padding: 48px 40px 176px;
+      padding: 48px 40px;
       color: var(--ink);
       background:
         radial-gradient(760px 420px at 88% -12%, var(--hero-wash), transparent 62%),
@@ -143,10 +137,6 @@ const isLocalDev = () => isDevMode() && !environment.production;
     /* Widened from 470px so the headline sets on two lines instead of three -
        a three-line sentence at display size reads as a paragraph, not a claim. */
     .hero-inner { max-width: 508px; width: 100%; position: relative; z-index: 1; }
-
-    @media (max-width: 900px), (max-height: 780px) {
-      .login-hero { padding-bottom: 48px; }
-    }
 
     .hero-brand { display: flex; align-items: center; gap: 15px; margin-bottom: 40px; }
     .hero-logo {
@@ -195,7 +185,7 @@ const isLocalDev = () => isDevMode() && !environment.production;
          than arriving as a finished block. "both" keeps them hidden until their
          turn instead of flashing at full opacity first. */
       animation: point-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
-      background: rgba(255, 255, 255, 0.72);
+      background: var(--surface);
       font-size: 13px;
     }
     /* Same four pastel fills the dashboard tiles cycle through. */
@@ -221,7 +211,7 @@ const isLocalDev = () => isDevMode() && !environment.production;
       width: 32px; height: 32px; flex: none;
       display: grid; place-items: center;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.85);
+      background: var(--surface);
       font-size: 15px;
     }
     .hero-points span span, .hero-points li > span:last-child { display: block; color: var(--ink-2); line-height: 1.5; }

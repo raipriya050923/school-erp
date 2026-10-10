@@ -30,7 +30,7 @@ function portalRoutes(role: 'student' | 'parent', portal: string): Routes {
         { label: 'Dashboard', path: 'dashboard', icon: 'grid' },
         { label: 'Attendance', path: 'attendance', icon: 'clipboard' },
         { label: 'Timetable', path: 'timetable', icon: 'calendar' },
-        // Homework is hidden from the sidebar; the route below still resolves if linked to.
+        // Homework is hidden from the nav; the route below still resolves if linked to.
         { label: 'Exams & Results', path: 'exams', icon: 'exam' },
         { label: 'Fees', path: 'fees', icon: 'money' },
         { label: 'Notices', path: 'notices', icon: 'bell' },

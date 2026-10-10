@@ -226,8 +226,8 @@ export class TAttendanceComponent implements OnInit {
     .paper-strip { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border,#e5e7eb); }
     .paper-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
                   border:1px solid var(--border,#e5e7eb); font-size:12px; }
-    .paper-chip.done { border-color:#16a34a; }
-    .paper-chip.done .paper-count { color:#16a34a; font-weight:600; }
+    .paper-chip.done { border-color:var(--good); }
+    .paper-chip.done .paper-count { color:var(--good); font-weight:600; }
     .paper-count { font-variant-numeric: tabular-nums; opacity:.75; }
 
     .unsaved { font-size:12px; color:var(--crit-text,#b91c1c); font-weight:600; }
@@ -235,7 +235,7 @@ export class TAttendanceComponent implements OnInit {
 
     /* Roll and Student stay put while the subject columns scroll sideways. */
     .grid-table th, .grid-table td { white-space:nowrap; }
-    .grid-table .stick { position:sticky; background:var(--surface,#fff); z-index:1; }
+    .grid-table .stick { position:sticky; background:var(--surface); z-index:1; }
     .grid-table .stick-1 { left:0; }
     .grid-table .stick-2 { left:56px; }
     .grid-table tfoot td { border-top:1px solid var(--border,#e5e7eb); }

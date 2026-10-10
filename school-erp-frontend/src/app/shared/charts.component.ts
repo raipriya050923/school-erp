@@ -51,19 +51,22 @@ export interface DonutSlice { label: string; value: number; color: string; }
   imports: [DecimalPipe],
   styles: [`
     .chart { width: 100%; height: auto; display: block; overflow: visible; }
-    .grid { stroke: #eef0f4; stroke-width: 1; }
-    .axis { font-size: 11px; fill: #9299a5; font-family: inherit; }
+    /* Through tokens, like everything else: these are the marks that would
+       otherwise stay light-mode grey on a dark card. */
+    .grid { stroke: var(--chart-grid); stroke-width: 1; }
+    .axis { font-size: 11px; fill: var(--chart-axis); font-family: inherit; }
     /* Through the accent tokens, so the attendance trend follows the school's palette
        instead of staying blue under a green sidebar. */
     .area { fill: var(--brand-tint); }
     .line { fill: none; stroke: var(--brand); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-    .crosshair { stroke: #c7cdd6; stroke-width: 1; }
-    .dot { fill: var(--brand); stroke: #fff; stroke-width: 2; }
-    .tip { fill: #111827; opacity: 0.95; }
-    .tip-title { font-size: 11px; fill: #d1d5db; font-family: inherit; }
-    .tip-value { font-size: 13px; font-weight: 700; fill: #fff; font-family: inherit; }
-    .tip-sub { font-size: 11px; font-weight: 500; fill: #9ca3af; }
-    .empty { padding: 28px; text-align: center; color: #9299a5; font-size: 13px; }
+    .crosshair { stroke: var(--chart-crosshair); stroke-width: 1; }
+    /* The ring around a point is the card behind it, not white. */
+    .dot { fill: var(--brand); stroke: var(--chart-ring); stroke-width: 2; }
+    .tip { fill: var(--tip-bg); opacity: 0.97; }
+    .tip-title { font-size: 11px; fill: var(--tip-title); font-family: inherit; }
+    .tip-value { font-size: 13px; font-weight: 700; fill: var(--tip-value); font-family: inherit; }
+    .tip-sub { font-size: 11px; font-weight: 500; fill: var(--tip-sub); }
+    .empty { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
   `],
 })
 export class TrendChartComponent {
@@ -158,15 +161,15 @@ export class TrendChartComponent {
   styles: [`
     .donut-wrap { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
     .donut { width: 172px; height: 172px; flex: none; }
-    .track { fill: none; stroke: #eef0f4; }
-    .hole-value { font-size: 20px; font-weight: 800; fill: #111827; font-family: inherit; }
-    .hole-label { font-size: 11px; fill: #9299a5; font-family: inherit; }
+    .track { fill: none; stroke: var(--chart-track); }
+    .hole-value { font-size: 20px; font-weight: 800; fill: var(--ink); font-family: inherit; }
+    .hole-label { font-size: 11px; fill: var(--muted); font-family: inherit; }
     .legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 190px; display: flex; flex-direction: column; gap: 12px; }
     .legend li { display: flex; align-items: center; gap: 10px; font-size: 13px; }
     .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-    .legend-label { color: #4b5563; font-weight: 500; }
+    .legend-label { color: var(--ink-2); font-weight: 500; }
     .legend-value { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .legend-pct { font-weight: 500; color: #9299a5; }
+    .legend-pct { font-weight: 500; color: var(--muted); }
   `],
 })
 export class DonutChartComponent {

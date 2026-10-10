@@ -1,8 +1,0 @@
-tags:
-  # Golden captures in test/screenshots_test.dart. These compare rendered
-  # pixels, which depend on the host's fonts, so they are skipped in the
-  # normal suite. Regenerate them with:
-  #
-  #   flutter test --run-skipped --tags screenshots --update-goldens
-  screenshots:
-    skip: "screenshot goldens — run with --run-skipped --tags screenshots"

@@ -185,10 +185,10 @@ type DashboardStats = import('../../core/super-admin-api.service').DashboardStat
  * decisions in styles.scss, not data.
  */
 const SCHOOL_THEMES = [
-  { key: 'classic', name: 'Classic', rail: '#ffffff',                              pill: '#2563eb', note: 'The light rail the product ships with' },
-  { key: 'brand',   name: 'Brand',   rail: 'linear-gradient(160deg,#2563eb,#1d4ed8)', pill: '#ffffff', note: 'Royal blue rail, white active item' },
+  { key: 'classic', name: 'Classic', rail: '#ffffff',                              pill: '#4f46e5', note: 'The white masthead the product ships with' },
+  { key: 'brand',   name: 'Brand',   rail: 'linear-gradient(160deg,#2563eb,#1d4ed8)', pill: '#ffffff', note: 'Royal blue masthead' },
   { key: 'forest',  name: 'Forest',  rail: 'linear-gradient(160deg,#154439,#10362f)', pill: '#0f9b76', note: 'Deep green — the traditional school colour' },
-  { key: 'mist',    name: 'Mist',    rail: '#eef2f9',                              pill: '#2563eb', note: 'Pale blue-grey with coloured module icons' },
+  { key: 'mist',    name: 'Mist',    rail: '#eef2f9',                              pill: '#2563eb', note: 'Pale blue-grey masthead' },
 ];
 
 type SchoolFormField = 'name' | 'email' | 'phone' | 'address' | 'city' | 'state' | 'affiliationBoard' | 'status' | 'theme';
