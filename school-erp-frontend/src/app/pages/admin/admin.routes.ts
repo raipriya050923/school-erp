@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { PortalLayoutComponent } from '../../shared/portal-layout.component';
 import { roleGuard } from '../../core/auth.guard';
+import { AdminTemplatesComponent } from './templates.page';
 // API-backed pages (live data from the .NET admin API)
 import {
   AdDashboardComponent,
@@ -51,6 +52,7 @@ export const ADMIN_ROUTES: Routes = [
         { label: 'Fee Management', path: 'fees', icon: 'money', group: 'Fees' },
         { label: 'Examinations', path: 'exams', icon: 'exam' },
         { label: 'Notice Board', path: 'notices', icon: 'bell' },
+        { label: 'Message Templates', path: 'templates', icon: 'chat' },
       ],
     },
     children: [
@@ -76,6 +78,7 @@ export const ADMIN_ROUTES: Routes = [
       { path: 'fees', component: AdFeesComponent },
       { path: 'exams', component: AdExamsComponent },
       { path: 'notices', component: AdNoticesComponent },
+      { path: 'templates', component: AdminTemplatesComponent },
     ],
   },
 ];

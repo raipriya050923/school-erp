@@ -11,6 +11,8 @@ import {
 } from './super-admin.pages';
 import { ProfilePageComponent } from '../../shared/profile.page';
 import { SaGeographyComponent } from './geography.page';
+import { SaTemplatesComponent } from './templates.page';
+import { SaEmailSettingsComponent } from './email-settings.page';
 
 export const SUPER_ADMIN_ROUTES: Routes = [
   {
@@ -27,6 +29,8 @@ export const SUPER_ADMIN_ROUTES: Routes = [
         { label: 'Billing & Payments', path: 'billing', icon: 'card', group: 'Subscriptions' },
         { label: 'Support Tickets', path: 'tickets', icon: 'ticket' },
         { label: 'Geography', path: 'geography', icon: 'layers' },
+        { label: 'Message Templates', path: 'templates', icon: 'bell' },
+        { label: 'Email Settings', path: 'email-settings', icon: 'card' },
       ],
     },
     children: [
@@ -36,6 +40,8 @@ export const SUPER_ADMIN_ROUTES: Routes = [
       { path: 'schools', component: SaSchoolsComponent },
       { path: 'plans', component: SaPlansComponent },
       { path: 'geography', component: SaGeographyComponent },
+      { path: 'templates', component: SaTemplatesComponent },
+      { path: 'email-settings', component: SaEmailSettingsComponent },
       { path: 'subscriptions', component: SaSubscriptionsComponent },
       { path: 'billing', component: SaBillingComponent },
       { path: 'tickets', component: SaTicketsComponent },

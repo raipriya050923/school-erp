@@ -16,6 +16,8 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionService, SubscriptionService>();
         services.AddScoped<IBillingService, BillingService>();
         services.AddScoped<ITicketService, TicketService>();
+        // The message library: SMS and email bodies as data, not as compiled strings.
+        services.AddScoped<IMessageTemplateService, Services.Messaging.MessageTemplateService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<Interfaces.Services.IGeographyService, Services.GeographyService>();
 

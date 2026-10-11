@@ -1,0 +1,1 @@
+ D:\\projects\\old-school\\school-management-mobile\\.dart_tool\\flutter_build\\eeb5c4f0343cb048dbef5bc78d02c1e4\\native_assets.json: 

@@ -1,0 +1,1 @@
+ D:\\projects\\school-erp\\school-management-mobile\\.dart_tool\\flutter_build\\fdbbc2f1d6d40ed358f59326f1e0e901\\dart_build_result.json: 

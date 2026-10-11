@@ -13,14 +13,41 @@ namespace SchoolErp.Infrastructure.Services;
 /// </summary>
 public class SmtpEmailSender : INotificationSender
 {
-    private readonly EmailOptions _options;
+    private readonly IEmailSettingsProvider? _settings;
+    private readonly EmailOptions? _fixed;
     private readonly ILogger<SmtpEmailSender> _logger;
 
-    public SmtpEmailSender(EmailOptions options, ILogger<SmtpEmailSender> logger)
+    /// <summary>The registered constructor: settings come from the console, via the provider.</summary>
+    public SmtpEmailSender(IEmailSettingsProvider settings, ILogger<SmtpEmailSender> logger)
     {
-        _options = options;
+        _settings = settings;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Fixed settings, for the Hostinger endpoints that exercise one named configuration
+    /// directly. Those are a diagnostic path and must keep testing exactly what they were
+    /// given, not whatever the console currently holds.
+    ///
+    /// A factory rather than a second constructor: two constructors of the same arity leave
+    /// the container unable to choose, and it fails at startup rather than at the call site.
+    /// </summary>
+    public static SmtpEmailSender ForFixedSettings(EmailOptions options, ILogger<SmtpEmailSender> logger)
+        => new(options, logger, fixedSettings: true);
+
+    private SmtpEmailSender(EmailOptions options, ILogger<SmtpEmailSender> logger, bool fixedSettings)
+    {
+        _fixed = options;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// The settings in force right now. Resolved per send rather than injected once, so the
+    /// console can change the mailbox without a redeploy; the provider caches, so this is not
+    /// a query per message.
+    /// </summary>
+    private EmailOptions _options =>
+        _fixed ?? _settings!.GetAsync().GetAwaiter().GetResult();
 
     public Task SendEmailAsync(string toEmail, string subject, string body, CancellationToken ct = default)
         => SendAsync(toEmail, subject, body, isHtml: false, ct);

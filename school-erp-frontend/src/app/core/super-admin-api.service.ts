@@ -104,6 +104,40 @@ export interface CreateSchoolResult {
   subscriptionEndsOn: string;
 }
 
+/** A message template as the platform owns it. Mirrors TemplateDto. */
+export interface MessageTemplate {
+  id: number;
+  channel: 'sms' | 'email';
+  code: string;
+  locale: string;
+  subject: string | null;
+  body: string;
+  providerTemplateId: string | null;
+  /** Who may reword it. 'school' lets a school supply its own version. */
+  editableBy: 'platform' | 'school';
+  isActive: boolean;
+  /** How many schools replaced this default with their own wording. */
+  overrideCount: number;
+  updatedAt: string;
+}
+
+export interface SaveMessageTemplate {
+  channel: 'sms' | 'email';
+  code: string;
+  locale: string;
+  subject: string | null;
+  body: string;
+  providerTemplateId: string | null;
+  editableBy: 'platform' | 'school';
+  isActive: boolean;
+}
+
+export interface TemplatePreview {
+  subject: string | null;
+  body: string;
+  unfilledPlaceholders: string[];
+}
+
 export interface Plan {
   id: number;
   name: string;
@@ -243,6 +277,24 @@ export class SuperAdminApiService {
   }
 
   // Plans
+  getTemplates(channel?: string): Observable<MessageTemplate[]> {
+    const params = channel ? new HttpParams().set('channel', channel) : undefined;
+    return this.http.get<MessageTemplate[]>(`${this.base}/templates`, { params });
+  }
+  createTemplate(dto: SaveMessageTemplate): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/templates`, dto);
+  }
+  updateTemplate(id: number, dto: SaveMessageTemplate): Observable<void> {
+    return this.http.put<void>(`${this.base}/templates/${id}`, dto);
+  }
+  deleteTemplate(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.base}/templates/${id}`);
+  }
+  /** What a body renders to, and which placeholders nothing was supplied for. */
+  previewTemplate(body: string, subject: string | null, values: Record<string, string>): Observable<TemplatePreview> {
+    return this.http.post<TemplatePreview>(`${this.base}/templates/preview`, { body, subject, values });
+  }
+
   getPlans(): Observable<Plan[]> {
     return this.http.get<Plan[]>(`${this.base}/plans`);
   }
