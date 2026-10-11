@@ -87,6 +87,23 @@ abstract class ApiHttp {
     decodeAny(response, allowEmpty: true);
   }
 
+  /// PUT under [base], for the endpoints that replace a record wholesale —
+  /// an edit form posts every field back, not only the ones that changed.
+  /// Answers 204, so nothing is decoded.
+  Future<void> put(String path, Map<String, dynamic> body) async {
+    late final http.Response response;
+    try {
+      response = await http
+          .put(_uri(path), headers: headers(), body: jsonEncode(body))
+          .timeout(timeout);
+    } on SocketException {
+      throw ApiException('Cannot reach the server at ${ApiConfig.baseUrl}.');
+    } on TimeoutException {
+      throw const ApiException('The server took too long to respond.');
+    }
+    decodeAny(response, allowEmpty: true);
+  }
+
   /// PATCH under [base], for the endpoints that change one field of a record
   /// rather than replacing it — reviewing a leave application, flipping a
   /// status. Answers 204, so nothing is decoded.

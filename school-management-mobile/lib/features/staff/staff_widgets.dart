@@ -296,10 +296,13 @@ class _Notice extends StatelessWidget {
 }
 
 /// A status word as a filled chip, using the web's semantic tint/text pairs.
-class StatusChip extends StatelessWidget {
-  const StatusChip(this.status, {super.key});
-
-  final String status;
+/// The tint/ink pair a status is drawn in.
+///
+/// Lifted out of [StatusChip] so a row and the chip sitting on it cannot
+/// disagree about what "overdue" looks like — the row tints its background from
+/// the same pair the chip fills itself with.
+class StatusPalette {
+  const StatusPalette._();
 
   static const Map<String, (Color, Color)> _map = <String, (Color, Color)>{
     'active': (AppColors.goodTint, AppColors.goodText),
@@ -319,11 +322,20 @@ class StatusChip extends StatelessWidget {
     'terminated': (AppColors.critTint, AppColors.critText),
   };
 
+  /// Grey for a status nobody has given a colour — unknown is not an alarm.
+  static (Color, Color) of(String status) =>
+      _map[status.toLowerCase()] ??
+      (AppColors.neutralTint, AppColors.lightTextSecondary);
+}
+
+class StatusChip extends StatelessWidget {
+  const StatusChip(this.status, {super.key});
+
+  final String status;
+
   @override
   Widget build(BuildContext context) {
-    final (Color bg, Color fg) =
-        _map[status.toLowerCase()] ??
-        (AppColors.neutralTint, AppColors.lightTextSecondary);
+    final (Color bg, Color fg) = StatusPalette.of(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
       decoration: BoxDecoration(
@@ -363,6 +375,7 @@ class StaffPage extends StatelessWidget {
     required this.child,
     this.subtitle,
     this.actions,
+    this.floatingActionButton,
   });
 
   final String title;
@@ -372,6 +385,11 @@ class StaffPage extends StatelessWidget {
 
   /// Extra app-bar actions, placed before the sign-out button.
   final List<Widget>? actions;
+
+  /// The page's primary create action. A button rather than an app-bar icon
+  /// because it is the one thing a list page is most often opened to do, and
+  /// the bottom-right corner is where a thumb already is.
+  final Widget? floatingActionButton;
 
   @override
   Widget build(BuildContext context) {
@@ -385,7 +403,11 @@ class StaffPage extends StatelessWidget {
             if (subtitle != null)
               Text(
                 subtitle!,
-                style: theme.textTheme.labelSmall,
+                // Against the brand bar, not the page: the body's grey would
+                // all but disappear on it.
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.appBarTheme.foregroundColor?.withValues(alpha: 0.78),
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -393,6 +415,7 @@ class StaffPage extends StatelessWidget {
         ),
         actions: <Widget>[...?actions, const SignOutAction()],
       ),
+      floatingActionButton: floatingActionButton,
       body: SafeArea(
         top: false,
         child: RefreshIndicator(
@@ -416,6 +439,16 @@ class StaffPage extends StatelessWidget {
 }
 
 /// A row in one of the staff list screens.
+///
+/// Rows alternate between two light grounds, and carry a bar of their status
+/// colour down the leading edge.
+///
+/// The banding is what separates one row from the next while scrolling — a page
+/// of identical white cards gives the eye nothing to count by, and on a long
+/// list it becomes easy to read a title against the wrong figure. Status stays
+/// on the bar and the chip rather than in the background: tinting whole rows by
+/// status looked arbitrary once most of a list shared one status, and it fought
+/// the banding for the same surface.
 class StaffRow extends StatelessWidget {
   const StaffRow({
     super.key,
@@ -424,6 +457,8 @@ class StaffRow extends StatelessWidget {
     this.trailing,
     this.status,
     this.onTap,
+    this.leading,
+    this.index = 0,
   });
 
   final String title;
@@ -432,52 +467,107 @@ class StaffRow extends StatelessWidget {
   final String? status;
   final VoidCallback? onTap;
 
+  /// Shown before the title — a monogram or an icon. Optional: a ticket subject
+  /// has no initials worth showing, a school name does.
+  final Widget? leading;
+
+  /// Position in the list, which decides which of the two grounds this row
+  /// takes. Left at zero every row is the lighter one, so a caller that does
+  /// not care simply gets no banding.
+  final int index;
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final String? s = status;
+
+    // The ground alternates; only the accent bar comes from the status, and a
+    // row without one simply has no bar.
+    final Color ground = index.isEven ? AppColors.rowEven : AppColors.rowOdd;
+    final Color ink = s == null ? theme.dividerColor : StatusPalette.of(s).$2;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
         onTap: onTap,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
-        ),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall,
+        color: ground,
+        // The bar runs the full height of the card, so it has to be clipped to
+        // the corner radius rather than drawn inside the padding.
+        clip: true,
+        padding: EdgeInsets.zero,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              if (s != null) SizedBox(width: 3, child: ColoredBox(color: ink)),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.md,
                   ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                ],
+                  child: Row(
+                    children: <Widget>[
+                      if (leading != null) ...<Widget>[
+                        leading!,
+                        const SizedBox(width: AppSpacing.md),
+                      ],
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            if (subtitle != null) ...<Widget>[
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: <Widget>[
+                          if (trailing != null)
+                            Text(
+                              trailing!,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                          if (s != null) ...<Widget>[
+                            if (trailing != null) const SizedBox(height: 4),
+                            StatusChip(s),
+                          ],
+                        ],
+                      ),
+                      // A row that goes somewhere says so; one that does not
+                      // keeps the space, so the trailing figures stay aligned
+                      // down a mixed list.
+                      if (onTap != null) ...<Widget>[
+                        const SizedBox(width: AppSpacing.xs),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: theme.dividerColor,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                if (trailing != null)
-                  Text(trailing!, style: theme.textTheme.titleSmall),
-                if (status != null) ...<Widget>[
-                  if (trailing != null) const SizedBox(height: 4),
-                  StatusChip(status!),
-                ],
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -604,3 +694,73 @@ class _StatusChip extends StatelessWidget {
     );
   }
 }
+
+/* ------------------------------------------------------------- small shared --
+   Four screens had grown their own copy of each of these, which is three too
+   many: a detail row that is 108px wide on one screen and 96 on another reads
+   as a rendering fault.
+*/
+
+/// A message in the middle of the screen that can still be pulled to refresh.
+///
+/// A plain Center cannot: RefreshIndicator needs a scrollable child, and the
+/// empty state is exactly when someone wants to pull for a new one.
+Widget centredMessage(BuildContext context, String text, {VoidCallback? onRetry}) =>
+    ListView(
+      padding: const EdgeInsets.all(AppSpacing.xxl),
+      children: <Widget>[
+        const SizedBox(height: AppSpacing.xxl),
+        Text(
+          text,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        if (onRetry != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.lg),
+          Center(
+            child: OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+          ),
+        ],
+      ],
+    );
+
+/// A heading over a group of [detailRow]s.
+Widget sectionTitle(BuildContext context, String title) => Padding(
+  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+  child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+);
+
+/// One labelled line of a record. An empty value prints as a dash rather than
+/// a blank, so a missing field looks deliberate instead of broken.
+Widget detailRow(BuildContext context, String label, String value) {
+  final ThemeData theme = Theme.of(context);
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(width: 108, child: Text(label, style: theme.textTheme.bodySmall)),
+        Expanded(
+          child: Text(
+            value.trim().isEmpty ? '—' : value,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+String titleCase(String s) =>
+    s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
+
+const List<String> kMonths = <String>[
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// "9 Oct 2026" — for a date that could be any year.
+String formatDay(DateTime d) => '${d.day} ${kMonths[d.month - 1]} ${d.year}';
+
+/// "9 Oct" — for a date within the current cycle, where the year is noise.
+String formatShortDay(DateTime d) => '${d.day} ${kMonths[d.month - 1]}';

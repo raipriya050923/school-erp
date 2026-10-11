@@ -17,7 +17,15 @@ import 'package:school_management_mobile/features/staff/admin_exams_screen.dart'
 import 'package:school_management_mobile/features/staff/admin_leave_screen.dart';
 import 'package:school_management_mobile/features/staff/admin_notices_screen.dart';
 import 'package:school_management_mobile/features/staff/admin_screens.dart';
+import 'package:school_management_mobile/features/staff/admin_student_form_screen.dart';
+import 'package:school_management_mobile/features/staff/admin_teacher_form_screen.dart';
 import 'package:school_management_mobile/features/staff/admin_staff_attendance_screen.dart';
+import 'package:school_management_mobile/features/staff/platform_billing_screen.dart';
+import 'package:school_management_mobile/features/staff/platform_geography_screen.dart';
+import 'package:school_management_mobile/features/staff/platform_plans_screen.dart';
+import 'package:school_management_mobile/features/staff/my_profile_screen.dart';
+import 'package:school_management_mobile/features/staff/platform_plan_form_screen.dart';
+import 'package:school_management_mobile/features/staff/platform_school_form_screen.dart';
 import 'package:school_management_mobile/features/staff/super_admin_screens.dart';
 import 'package:school_management_mobile/features/staff/teacher_attendance_screen.dart';
 import 'package:school_management_mobile/features/staff/teacher_marks_screen.dart';
@@ -69,6 +77,17 @@ void main() {
     'Platform schools': () => const PlatformSchoolsScreen(),
     'Platform subscriptions': () => const PlatformSubscriptionsScreen(),
     'Platform tickets': () => const PlatformTicketsScreen(),
+    'Platform plans': () => const PlatformPlansScreen(),
+    'Platform billing': () => const PlatformBillingScreen(),
+    'Platform geography': () => const PlatformGeographyScreen(),
+    'Platform plan form': () => const PlatformPlanFormScreen(),
+    'My profile': () => const MyProfileScreen(),
+    'Platform school form': () => const PlatformSchoolFormScreen(),
+    // Both open in their create state, which is the one that renders with
+    // no record behind it and so is the one that can overflow on a small
+    // screen before anything is typed.
+    'Admin student form': () => const AdminStudentFormScreen(),
+    'Admin teacher form': () => const AdminTeacherFormScreen(),
   };
 
   for (final ({String name, Size size}) device in devices) {

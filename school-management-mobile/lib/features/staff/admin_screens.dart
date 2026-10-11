@@ -10,7 +10,9 @@ import '../../core/widgets/common.dart';
 import '../../data/api_models.dart' show FeePayment;
 import '../../data/staff_models.dart';
 import '../fees/receipt_sheet.dart';
-import 'parent_login_sheet.dart';
+import 'admin_people_actions.dart';
+import 'admin_student_form_screen.dart';
+import 'admin_teacher_form_screen.dart';
 import 'staff_widgets.dart';
 
 /* ------------------------------------------------------------ dashboard -- */
@@ -169,6 +171,15 @@ class _AdminStudentsScreenState extends State<AdminStudentsScreen> {
               ),
             ),
           ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<bool>(
+                builder: (BuildContext _) => const AdminStudentFormScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            label: const Text('Admit'),
+          ),
           body: SafeArea(
             top: false,
             child: RefreshIndicator(
@@ -206,10 +217,10 @@ class _AdminStudentsScreenState extends State<AdminStudentsScreen> {
                               ? Format.money(rows[i].feeDue)
                               : null,
                           status: rows[i].status,
-                          // Tapping a student opens the parent-login sheet: it is
-                          // the only per-student action this portal has, so it
-                          // does not need a menu of one.
-                          onTap: () => ParentLoginSheet.show(context, rows[i]),
+                          // A menu now rather than straight to the parent-login
+                          // sheet: editing, password resets and retiring a
+                          // student all hang off the same row.
+                          onTap: () => showStudentActions(context, rows[i]),
                         ),
                       ),
               ),
@@ -249,6 +260,15 @@ class _AdminTeachersScreenState extends State<AdminTeachersScreen> {
             ? '${store.teachers.value!.length} on staff'
             : null,
         onRefresh: () => store.loadTeachers(force: true),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<bool>(
+              builder: (BuildContext _) => const AdminTeacherFormScreen(),
+            ),
+          ),
+          icon: const Icon(Icons.person_add_alt_1_outlined),
+          label: const Text('Add'),
+        ),
         child: StaffSection<List<AdminTeacher>>(
           state: store.teachers,
           onRetry: () => store.loadTeachers(force: true),
@@ -273,6 +293,7 @@ class _AdminTeachersScreenState extends State<AdminTeachersScreen> {
                             'Class teacher: ${t.classTeacherOf}',
                         ].join(' · '),
                         status: t.status,
+                        onTap: () => showTeacherActions(context, t),
                       ),
                   ],
                 ),

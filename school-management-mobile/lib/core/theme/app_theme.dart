@@ -66,6 +66,14 @@ class AppTheme {
 
     final TextTheme textTheme = _textTheme(textPrimary, textSecondary);
 
+    // The app bar and the bottom nav are brand-coloured, so everything drawn on
+    // them is light — including the status-bar and gesture-bar icons the OS
+    // draws, which is why the overlay style below is `light` in both themes
+    // rather than following the brightness.
+    final Color chrome = isDark ? AppColors.primary800 : AppColors.primary600;
+    const Color onChrome = Colors.white;
+    final Color onChromeMuted = Colors.white.withValues(alpha: 0.72);
+
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
@@ -75,16 +83,25 @@ class AppTheme {
       textTheme: textTheme,
       splashFactory: InkSparkle.splashFactory,
       appBarTheme: AppBarTheme(
-        backgroundColor: background,
+        backgroundColor: chrome,
         surfaceTintColor: Colors.transparent,
-        foregroundColor: textPrimary,
+        foregroundColor: onChrome,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: textTheme.titleLarge,
-        systemOverlayStyle: isDark
-            ? SystemUiOverlayStyle.light
-            : SystemUiOverlayStyle.dark,
+        titleTextStyle: textTheme.titleLarge?.copyWith(color: onChrome),
+        iconTheme: const IconThemeData(color: onChrome),
+        actionsIconTheme: const IconThemeData(color: onChrome),
+        // Painted by the OS, not by us: light glyphs, and the gesture bar
+        // filled with the same brand colour so the screen ends in one block
+        // rather than a blue bar sitting above a white strip.
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,  // Android
+          statusBarBrightness: Brightness.dark,       // iOS
+          systemNavigationBarColor: chrome,
+          systemNavigationBarIconBrightness: Brightness.light,
+        ),
       ),
       cardTheme: CardThemeData(
         color: surface,
@@ -165,12 +182,12 @@ class AppTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: surface,
+        backgroundColor: chrome,
         surfaceTintColor: Colors.transparent,
-        // --brand-tint, the same wash the web sidebar puts behind an active item.
-        indicatorColor: isDark
-            ? AppColors.primary900.withValues(alpha: 0.55)
-            : AppColors.primaryTint,
+        // A lift out of the bar rather than the web's blue tint: on a blue bar
+        // a blue wash is invisible, so the active item is marked by a lighter
+        // pill of the same hue.
+        indicatorColor: Colors.white.withValues(alpha: 0.18),
         elevation: 0,
         height: 68,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
@@ -179,14 +196,14 @@ class AppTheme {
           return TextStyle(
             fontSize: 11.5,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            color: selected ? scheme.primary : textSecondary,
+            color: selected ? onChrome : onChromeMuted,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final bool selected = states.contains(WidgetState.selected);
           return IconThemeData(
             size: 23,
-            color: selected ? scheme.primary : textSecondary,
+            color: selected ? onChrome : onChromeMuted,
           );
         }),
       ),

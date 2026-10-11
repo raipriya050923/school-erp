@@ -119,7 +119,9 @@ void main() {
 
     expect(find.text('Raghav Public School'), findsOneWidget);
     expect(find.text('active'), findsOneWidget);
-    expect(find.text('16'), findsOneWidget);
+    // The row labels the count rather than showing a bare integer beside a
+    // column of money.
+    expect(find.text('16 students'), findsOneWidget);
   });
 
   testWidgets('teacher classes list renders its rows', (

@@ -142,7 +142,11 @@ class SuperAdminStore extends PortalStore {
   void reset() {
     stats = const Loadable<PlatformStats>.idle();
     schools = const Loadable<List<PlatformSchool>>.idle();
+    // Cleared with the data: a term left behind would silently filter the
+    // next account's school list.
+    schoolSearch = '';
     subscriptions = const Loadable<List<PlatformSubscription>>.idle();
+    subscriptionStatus = '';
     tickets = const Loadable<List<SupportTicket>>.idle();
     notifyListeners();
   }
@@ -154,19 +158,43 @@ class SuperAdminStore extends PortalStore {
     force: force,
   );
 
-  Future<void> loadSchools({bool force = false}) => load(
-    current: () => schools,
-    set: (Loadable<List<PlatformSchool>> v) => schools = v,
-    fetch: _api.schools,
-    force: force,
-  );
+  /// The search term the Schools list is currently showing results for. Held
+  /// on the store, not the screen, so pull-to-refresh and the reload after an
+  /// edit return the same filtered set rather than silently widening it.
+  String schoolSearch = '';
 
-  Future<void> loadSubscriptions({bool force = false}) => load(
-    current: () => subscriptions,
-    set: (Loadable<List<PlatformSubscription>> v) => subscriptions = v,
-    fetch: _api.subscriptions,
-    force: force,
-  );
+  /// Passing [search] applies a new term and always refetches — the cached
+  /// list is for the previous term and answering from it would be wrong.
+  Future<void> loadSchools({bool force = false, String? search}) {
+    if (search != null && search.trim() != schoolSearch) {
+      schoolSearch = search.trim();
+      force = true;
+    }
+    return load(
+      current: () => schools,
+      set: (Loadable<List<PlatformSchool>> v) => schools = v,
+      fetch: () => _api.schools(search: schoolSearch),
+      force: force,
+    );
+  }
+
+  /// The status the Subscriptions list is currently showing, '' for all. On
+  /// the store for the same reason as [schoolSearch]: a refresh must return
+  /// the set the screen is already showing.
+  String subscriptionStatus = '';
+
+  Future<void> loadSubscriptions({bool force = false, String? status}) {
+    if (status != null && status != subscriptionStatus) {
+      subscriptionStatus = status;
+      force = true;
+    }
+    return load(
+      current: () => subscriptions,
+      set: (Loadable<List<PlatformSubscription>> v) => subscriptions = v,
+      fetch: () => _api.subscriptions(status: subscriptionStatus),
+      force: force,
+    );
+  }
 
   Future<void> loadTickets({bool force = false}) => load(
     current: () => tickets,

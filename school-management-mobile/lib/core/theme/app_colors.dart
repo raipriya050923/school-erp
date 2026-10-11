@@ -50,6 +50,13 @@ class AppColors {
   static const Color lightBackground = Color(0xFFF7F8FA); // --page
   static const Color lightSurface = Color(0xFFFFFFFF); // --surface
   static const Color lightSurfaceAlt = Color(0xFFF2F4F7); // --neutral-tint
+
+  /// Alternating grounds for list rows. Two tints a shade apart rather than one
+  /// against white: the banding then reads as a deliberate pattern instead of
+  /// looking like every other row failed to paint. Both are light enough that
+  /// body text keeps well past the 4.5:1 contrast it needs on either.
+  static const Color rowEven = Color(0xFFFFFFFF);
+  static const Color rowOdd = Color(0xFFF4F7FC); // a hint of the brand blue
   static const Color lightBorder = Color(0xFFE8EBF0); // --border
   static const Color lightTextPrimary = Color(0xFF111827); // --ink
   static const Color lightTextSecondary = Color(0xFF4B5563); // --ink-2

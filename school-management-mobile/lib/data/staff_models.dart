@@ -345,6 +345,231 @@ class AdminStudent {
   );
 }
 
+/// One student in full, as the detail screen and the edit form need them.
+class StudentDetail {
+  const StudentDetail({
+    required this.id,
+    required this.admissionNo,
+    required this.name,
+    required this.firstName,
+    required this.lastName,
+    this.className,
+    this.sectionName,
+    this.rollNo,
+    this.gender,
+    this.dob,
+    this.bloodGroup,
+    this.email,
+    this.phone,
+    this.guardianName,
+    this.guardianPhone,
+    this.address,
+    this.city,
+    this.state,
+    this.pincode,
+    this.tcNo,
+    this.previousSchool,
+    this.admissionDate,
+    required this.feeDue,
+    required this.status,
+    this.stateId,
+    this.cityId,
+  });
+
+  final int id;
+  final String admissionNo;
+  final String name;
+  final String firstName;
+  final String lastName;
+  final String? className;
+  final String? sectionName;
+  final String? rollNo;
+  final String? gender;
+  final DateTime? dob;
+  final String? bloodGroup;
+  final String? email;
+  final String? phone;
+  final String? guardianName;
+  final String? guardianPhone;
+  final String? address;
+  final String? city;
+  final String? state;
+  final String? pincode;
+  final String? tcNo;
+  final String? previousSchool;
+  final DateTime? admissionDate;
+  final double feeDue;
+  final String status;
+
+  /// Geography master ids. Authoritative — the city/state text is written from
+  /// whatever they resolve to. The country follows the school.
+  final int? stateId;
+  final int? cityId;
+
+  factory StudentDetail.fromJson(Map<String, dynamic> j) => StudentDetail(
+    id: _int(j['id']),
+    admissionNo: j['admissionNo'] as String? ?? '',
+    name: j['name'] as String? ?? '',
+    firstName: j['firstName'] as String? ?? '',
+    lastName: j['lastName'] as String? ?? '',
+    className: j['className'] as String?,
+    sectionName: j['sectionName'] as String?,
+    rollNo: j['rollNo'] as String?,
+    gender: j['gender'] as String?,
+    dob: _date(j['dob']),
+    bloodGroup: j['bloodGroup'] as String?,
+    email: j['email'] as String?,
+    phone: j['phone'] as String?,
+    guardianName: j['guardianName'] as String?,
+    guardianPhone: j['guardianPhone'] as String?,
+    address: j['address'] as String?,
+    city: j['city'] as String?,
+    state: j['state'] as String?,
+    pincode: j['pincode'] as String?,
+    tcNo: j['tcNo'] as String?,
+    previousSchool: j['previousSchool'] as String?,
+    admissionDate: _date(j['admissionDate']),
+    feeDue: _dbl(j['feeDue']),
+    status: j['status'] as String? ?? 'active',
+    stateId: j['stateId'] == null ? null : _int(j['stateId']),
+    cityId: j['cityId'] == null ? null : _int(j['cityId']),
+  );
+}
+
+/// A degree or certificate on a teacher's record.
+class TeacherQualification {
+  const TeacherQualification({
+    required this.name,
+    this.institution,
+    this.completionYear,
+  });
+
+  final String name;
+  final String? institution;
+  final int? completionYear;
+
+  factory TeacherQualification.fromJson(Map<String, dynamic> j) =>
+      TeacherQualification(
+        name: j['name'] as String? ?? '',
+        institution: j['institution'] as String?,
+        completionYear:
+            j['completionYear'] == null ? null : _int(j['completionYear']),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'name': name,
+    'institution': institution,
+    'completionYear': completionYear,
+  };
+}
+
+/// One teacher in full.
+class TeacherDetail {
+  const TeacherDetail({
+    required this.id,
+    required this.employeeCode,
+    required this.name,
+    required this.firstName,
+    required this.lastName,
+    this.subject,
+    this.phone,
+    this.email,
+    this.gender,
+    this.dob,
+    this.address,
+    this.city,
+    this.state,
+    this.pincode,
+    this.joiningDate,
+    required this.status,
+    this.stateId,
+    this.cityId,
+    this.subjects = const <String>[],
+    this.qualifications = const <TeacherQualification>[],
+  });
+
+  final int id;
+  final String employeeCode;
+  final String name;
+  final String firstName;
+  final String lastName;
+
+  /// The subjects joined for display; [subjects] carries them apart.
+  final String? subject;
+  final String? phone;
+  final String? email;
+  final String? gender;
+  final DateTime? dob;
+  final String? address;
+  final String? city;
+  final String? state;
+  final String? pincode;
+  final DateTime? joiningDate;
+  final String status;
+  final int? stateId;
+  final int? cityId;
+  final List<String> subjects;
+  final List<TeacherQualification> qualifications;
+
+  factory TeacherDetail.fromJson(Map<String, dynamic> j) => TeacherDetail(
+    id: _int(j['id']),
+    employeeCode: j['employeeCode'] as String? ?? '',
+    name: j['name'] as String? ?? '',
+    firstName: j['firstName'] as String? ?? '',
+    lastName: j['lastName'] as String? ?? '',
+    subject: j['subject'] as String?,
+    phone: j['phone'] as String?,
+    email: j['email'] as String?,
+    gender: j['gender'] as String?,
+    dob: _date(j['dob']),
+    address: j['address'] as String?,
+    city: j['city'] as String?,
+    state: j['state'] as String?,
+    pincode: j['pincode'] as String?,
+    joiningDate: _date(j['joiningDate']),
+    status: j['status'] as String? ?? 'active',
+    stateId: j['stateId'] == null ? null : _int(j['stateId']),
+    cityId: j['cityId'] == null ? null : _int(j['cityId']),
+    subjects: ((j['subjects'] as List<dynamic>?) ?? const <dynamic>[])
+        .map((dynamic e) => '$e')
+        .toList(),
+    qualifications:
+        ((j['qualifications'] as List<dynamic>?) ?? const <dynamic>[])
+            .map((dynamic e) =>
+                TeacherQualification.fromJson(e as Map<String, dynamic>))
+            .toList(),
+  );
+}
+
+/// What admitting a student or hiring a teacher hands back: the new record's
+/// identifier and the login provisioned with it. The password is plaintext
+/// here and nowhere else.
+class ProvisionedPerson {
+  const ProvisionedPerson({
+    required this.id,
+    required this.code,
+    this.rollNo,
+    required this.credentials,
+  });
+
+  final int id;
+
+  /// Admission number for a student, employee code for a teacher.
+  final String code;
+  final String? rollNo;
+  final GeneratedCredentials credentials;
+
+  factory ProvisionedPerson.fromJson(Map<String, dynamic> j) =>
+      ProvisionedPerson(
+        id: _int(j['id']),
+        code: (j['admissionNo'] ?? j['employeeCode']) as String? ?? '',
+        rollNo: j['rollNo'] as String?,
+        credentials: GeneratedCredentials.fromJson(
+          (j['credentials'] as Map<String, dynamic>?) ?? const <String, dynamic>{},
+        ),
+      );
+}
+
 class AdminTeacher {
   const AdminTeacher({
     required this.id,
@@ -408,6 +633,33 @@ class FeeSummary {
 }
 
 /// A section of a class, as the class master holds it.
+/// One subject on the school's subject master. What a teacher can be assigned
+/// and what an exam paper is set in — picked from here rather than typed, so
+/// "Maths" and "Mathematics" cannot both end up on the timetable.
+class SchoolSubject {
+  const SchoolSubject({
+    required this.id,
+    required this.name,
+    required this.isActive,
+    this.code,
+    this.subjectType,
+  });
+
+  final int id;
+  final String name;
+  final bool isActive;
+  final String? code;
+  final String? subjectType;
+
+  factory SchoolSubject.fromJson(Map<String, dynamic> j) => SchoolSubject(
+    id: _int(j['id']),
+    name: j['name'] as String? ?? '',
+    isActive: j['isActive'] as bool? ?? true,
+    code: j['code'] as String?,
+    subjectType: j['subjectType'] as String?,
+  );
+}
+
 class SchoolSection {
   const SchoolSection({
     required this.id,
@@ -1043,6 +1295,284 @@ class AdminInvoice {
 
 /* ==================================================== super-admin portal == */
 
+/// One labelled line of the signed-in user's own profile.
+class ProfileDetail {
+  const ProfileDetail({required this.label, this.value});
+
+  final String label;
+  final String? value;
+
+  factory ProfileDetail.fromJson(Map<String, dynamic> j) => ProfileDetail(
+    label: j['label'] as String? ?? '',
+    value: j['value'] as String?,
+  );
+}
+
+/// The signed-in user, whoever they are.
+///
+/// `GET /auth/me` answers for every role, with the role-specific rows arriving
+/// as a flat label/value list. That is what lets one screen show a super admin,
+/// a school admin, a teacher or a student without branching on role.
+class MyProfile {
+  const MyProfile({
+    required this.userId,
+    required this.username,
+    required this.fullName,
+    this.email,
+    this.phone,
+    required this.role,
+    required this.title,
+    this.schoolId,
+    this.schoolName,
+    this.details = const <ProfileDetail>[],
+  });
+
+  final int userId;
+  final String username;
+  final String fullName;
+  final String? email;
+  final String? phone;
+  final String role;
+
+  /// What the role is called in words — "Platform Owner", "Class Teacher".
+  final String title;
+  final int? schoolId;
+  final String? schoolName;
+
+  /// Rows that only make sense for this role, already labelled by the API.
+  final List<ProfileDetail> details;
+
+  /// Up to two letters for the avatar.
+  String get initials => fullName
+      .split(RegExp(r'\s+'))
+      .where((String w) => w.isNotEmpty)
+      .map((String w) => w[0])
+      .take(2)
+      .join()
+      .toUpperCase();
+
+  factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
+    userId: _int(j['userId']),
+    username: j['username'] as String? ?? '',
+    fullName: j['fullName'] as String? ?? '',
+    email: j['email'] as String?,
+    phone: j['phone'] as String?,
+    role: j['role'] as String? ?? '',
+    title: j['title'] as String? ?? '',
+    schoolId: j['schoolId'] == null ? null : _int(j['schoolId']),
+    schoolName: j['schoolName'] as String?,
+    details: ((j['details'] as List<dynamic>?) ?? const <dynamic>[])
+        .map((dynamic e) => ProfileDetail.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+}
+
+/// A plan on the price list, and how many schools are on it.
+class SubscriptionPlan {
+  const SubscriptionPlan({
+    required this.id,
+    required this.name,
+    required this.slug,
+    this.description,
+    required this.priceMonthly,
+    required this.priceYearly,
+    this.maxStudents,
+    this.maxStaff,
+    required this.trialDays,
+    required this.isActive,
+    required this.subscriberCount,
+  });
+
+  final int id;
+  final String name;
+  final String slug;
+  final String? description;
+  final double priceMonthly;
+  final double priceYearly;
+
+  /// Null means no cap. Zero would be a plan nobody could use, so the two are
+  /// not interchangeable.
+  final int? maxStudents;
+  final int? maxStaff;
+  final int trialDays;
+  final bool isActive;
+
+  /// Schools currently on it. Retiring a plan with subscribers is the thing
+  /// the screen has to warn about, so it is carried on the row.
+  final int subscriberCount;
+
+  factory SubscriptionPlan.fromJson(Map<String, dynamic> j) => SubscriptionPlan(
+    id: _int(j['id']),
+    name: j['name'] as String? ?? '',
+    slug: j['slug'] as String? ?? '',
+    description: j['description'] as String?,
+    priceMonthly: _dbl(j['priceMonthly']),
+    priceYearly: _dbl(j['priceYearly']),
+    maxStudents: j['maxStudents'] == null ? null : _int(j['maxStudents']),
+    maxStaff: j['maxStaff'] == null ? null : _int(j['maxStaff']),
+    trialDays: _int(j['trialDays']),
+    isActive: j['isActive'] as bool? ?? false,
+    subscriberCount: _int(j['subscriberCount']),
+  );
+}
+
+/// One invoice the platform has raised against a school.
+class BillingInvoice {
+  const BillingInvoice({
+    required this.id,
+    required this.invoiceNo,
+    required this.schoolId,
+    required this.schoolName,
+    required this.totalAmount,
+    this.issuedAt,
+    required this.dueDate,
+    required this.status,
+    this.paidAt,
+    this.remindedAt,
+  });
+
+  final int id;
+  final String invoiceNo;
+  final int schoolId;
+  final String schoolName;
+  final double totalAmount;
+  final DateTime? issuedAt;
+  final DateTime dueDate;
+
+  /// draft | sent | paid | overdue | cancelled
+  final String status;
+  final DateTime? paidAt;
+
+  /// When a reminder last went out, so the screen can say "reminded" rather
+  /// than inviting someone to send a third one this morning.
+  final DateTime? remindedAt;
+
+  bool get isPaid => status.toLowerCase() == 'paid';
+
+  factory BillingInvoice.fromJson(Map<String, dynamic> j) => BillingInvoice(
+    id: _int(j['id']),
+    invoiceNo: j['invoiceNo'] as String? ?? '',
+    schoolId: _int(j['schoolId']),
+    schoolName: j['schoolName'] as String? ?? '',
+    totalAmount: _dbl(j['totalAmount']),
+    issuedAt: _date(j['issuedAt']),
+    dueDate: _date(j['dueDate']) ?? DateTime.now(),
+    status: j['status'] as String? ?? '',
+    paidAt: _date(j['paidAt']),
+    remindedAt: _date(j['remindedAt']),
+  );
+}
+
+/// What the platform is owed and has collected.
+class BillingSummary {
+  const BillingSummary({
+    required this.collected,
+    required this.outstanding,
+    required this.overdue,
+    required this.paidCount,
+    required this.sentCount,
+    required this.overdueCount,
+  });
+
+  final double collected;
+  final double outstanding;
+  final double overdue;
+  final int paidCount;
+  final int sentCount;
+  final int overdueCount;
+
+  factory BillingSummary.fromJson(Map<String, dynamic> j) => BillingSummary(
+    collected: _dbl(j['collected']),
+    outstanding: _dbl(j['outstanding']),
+    overdue: _dbl(j['overdue']),
+    paidCount: _int(j['paidCount']),
+    sentCount: _int(j['sentCount']),
+    overdueCount: _int(j['overdueCount']),
+  );
+}
+
+/// The geography master, which every school's address is picked from.
+class GeoCountry {
+  const GeoCountry({
+    required this.id,
+    required this.name,
+    required this.iso2,
+    this.phoneCode,
+    this.currency,
+    required this.isActive,
+  });
+
+  final int id;
+  final String name;
+  final String iso2;
+  final String? phoneCode;
+  final String? currency;
+  final bool isActive;
+
+  factory GeoCountry.fromJson(Map<String, dynamic> j) => GeoCountry(
+    id: _int(j['id']),
+    name: j['name'] as String? ?? '',
+    iso2: j['iso2'] as String? ?? '',
+    phoneCode: j['phoneCode'] as String?,
+    currency: j['currency'] as String?,
+    isActive: j['isActive'] as bool? ?? false,
+  );
+}
+
+class GeoState {
+  const GeoState({
+    required this.id,
+    required this.countryId,
+    this.countryName,
+    required this.name,
+    this.code,
+    required this.isActive,
+  });
+
+  final int id;
+  final int countryId;
+  final String? countryName;
+  final String name;
+  final String? code;
+  final bool isActive;
+
+  factory GeoState.fromJson(Map<String, dynamic> j) => GeoState(
+    id: _int(j['id']),
+    countryId: _int(j['countryId']),
+    countryName: j['countryName'] as String?,
+    name: j['name'] as String? ?? '',
+    code: j['code'] as String?,
+    isActive: j['isActive'] as bool? ?? false,
+  );
+}
+
+class GeoCity {
+  const GeoCity({
+    required this.id,
+    required this.stateId,
+    this.stateName,
+    this.countryName,
+    required this.name,
+    required this.isActive,
+  });
+
+  final int id;
+  final int stateId;
+  final String? stateName;
+  final String? countryName;
+  final String name;
+  final bool isActive;
+
+  factory GeoCity.fromJson(Map<String, dynamic> j) => GeoCity(
+    id: _int(j['id']),
+    stateId: _int(j['stateId']),
+    stateName: j['stateName'] as String?,
+    countryName: j['countryName'] as String?,
+    name: j['name'] as String? ?? '',
+    isActive: j['isActive'] as bool? ?? false,
+  );
+}
+
 class PlatformStats {
   const PlatformStats({
     required this.totalSchools,
@@ -1076,6 +1606,7 @@ class PlatformSchool {
     this.schoolCode,
     this.city,
     this.planName,
+    this.createdAt,
   });
 
   final int id;
@@ -1086,6 +1617,11 @@ class PlatformSchool {
   final String? city;
   final String? planName;
 
+  /// When the school was onboarded. The dashboard's Recent Signups is this
+  /// list in date order, so the row carries the date rather than the screen
+  /// fetching it again.
+  final DateTime? createdAt;
+
   factory PlatformSchool.fromJson(Map<String, dynamic> j) => PlatformSchool(
     id: _int(j['id']),
     name: j['name'] as String? ?? '',
@@ -1094,6 +1630,153 @@ class PlatformSchool {
     schoolCode: j['schoolCode'] as String?,
     city: j['city'] as String?,
     planName: j['planName'] as String?,
+    createdAt: _date(j['createdAt']),
+  );
+}
+
+/// One school in full, as the detail screen and the edit form need it.
+class SchoolDetail {
+  const SchoolDetail({
+    required this.id,
+    required this.name,
+    this.schoolCode,
+    this.subdomain,
+    this.email,
+    this.phone,
+    this.address,
+    this.city,
+    this.state,
+    this.country,
+    this.postalCode,
+    this.affiliationBoard,
+    this.currency,
+    this.timezone,
+    required this.theme,
+    required this.status,
+    this.onboardedAt,
+    this.createdAt,
+    this.planId,
+    this.planName,
+    this.billingCycle,
+    this.subscriptionStatus,
+    this.subscriptionEndsOn,
+    this.adminUsername,
+    this.adminEmail,
+    this.countryId,
+    this.stateId,
+    this.cityId,
+  });
+
+  final int id;
+  final String name;
+  final String? schoolCode;
+  final String? subdomain;
+  final String? email;
+  final String? phone;
+  final String? address;
+  final String? city;
+  final String? state;
+  final String? country;
+  final String? postalCode;
+  final String? affiliationBoard;
+  final String? currency;
+  final String? timezone;
+
+  /// classic | brand | forest | mist
+  final String theme;
+  final String status;
+  final DateTime? onboardedAt;
+  final DateTime? createdAt;
+
+  final int? planId;
+  final String? planName;
+  final String? billingCycle;
+  final String? subscriptionStatus;
+  final DateTime? subscriptionEndsOn;
+
+  final String? adminUsername;
+  final String? adminEmail;
+
+  /// The geography master ids. These are what the form posts back — the
+  /// city/state/country text is written from whatever they resolve to.
+  final int? countryId;
+  final int? stateId;
+  final int? cityId;
+
+  factory SchoolDetail.fromJson(Map<String, dynamic> j) => SchoolDetail(
+    id: _int(j['id']),
+    name: j['name'] as String? ?? '',
+    schoolCode: j['schoolCode'] as String?,
+    subdomain: j['subdomain'] as String?,
+    email: j['email'] as String?,
+    phone: j['phone'] as String?,
+    address: j['address'] as String?,
+    city: j['city'] as String?,
+    state: j['state'] as String?,
+    country: j['country'] as String?,
+    postalCode: j['postalCode'] as String?,
+    affiliationBoard: j['affiliationBoard'] as String?,
+    currency: j['currency'] as String?,
+    timezone: j['timezone'] as String?,
+    theme: j['theme'] as String? ?? 'classic',
+    status: j['status'] as String? ?? '',
+    onboardedAt: _date(j['onboardedAt']),
+    createdAt: _date(j['createdAt']),
+    planId: j['planId'] == null ? null : _int(j['planId']),
+    planName: j['planName'] as String?,
+    billingCycle: j['billingCycle'] as String?,
+    subscriptionStatus: j['subscriptionStatus'] as String?,
+    subscriptionEndsOn: _date(j['subscriptionEndsOn']),
+    adminUsername: j['adminUsername'] as String?,
+    adminEmail: j['adminEmail'] as String?,
+    countryId: j['countryId'] == null ? null : _int(j['countryId']),
+    stateId: j['stateId'] == null ? null : _int(j['stateId']),
+    cityId: j['cityId'] == null ? null : _int(j['cityId']),
+  );
+}
+
+/// What onboarding a school hands back. The password exists in plaintext here
+/// and nowhere else — only its hash is stored — so the screen that receives
+/// this is the last chance anyone has to read it.
+class SchoolOnboarded {
+  const SchoolOnboarded({
+    required this.schoolId,
+    required this.schoolName,
+    required this.schoolCode,
+    required this.subdomain,
+    required this.adminFullName,
+    required this.username,
+    required this.email,
+    required this.temporaryPassword,
+    required this.planName,
+    required this.subscriptionStatus,
+    this.subscriptionEndsOn,
+  });
+
+  final int schoolId;
+  final String schoolName;
+  final String schoolCode;
+  final String subdomain;
+  final String adminFullName;
+  final String username;
+  final String email;
+  final String temporaryPassword;
+  final String planName;
+  final String subscriptionStatus;
+  final DateTime? subscriptionEndsOn;
+
+  factory SchoolOnboarded.fromJson(Map<String, dynamic> j) => SchoolOnboarded(
+    schoolId: _int(j['schoolId']),
+    schoolName: j['schoolName'] as String? ?? '',
+    schoolCode: j['schoolCode'] as String? ?? '',
+    subdomain: j['subdomain'] as String? ?? '',
+    adminFullName: j['adminFullName'] as String? ?? '',
+    username: j['username'] as String? ?? '',
+    email: j['email'] as String? ?? '',
+    temporaryPassword: j['temporaryPassword'] as String? ?? '',
+    planName: j['planName'] as String? ?? '',
+    subscriptionStatus: j['subscriptionStatus'] as String? ?? '',
+    subscriptionEndsOn: _date(j['subscriptionEndsOn']),
   );
 }
 
@@ -1105,6 +1788,7 @@ class PlatformSubscription {
     required this.billingCycle,
     this.schoolName,
     this.planName,
+    this.startDate,
     this.endDate,
   });
 
@@ -1114,6 +1798,11 @@ class PlatformSubscription {
   final String billingCycle;
   final String? schoolName;
   final String? planName;
+
+  /// When the subscription period began. The list's date filter narrows on
+  /// this rather than on the end date: "started in Q2" is the question being
+  /// asked of a subscription list, not "expires in Q2".
+  final DateTime? startDate;
   final DateTime? endDate;
 
   factory PlatformSubscription.fromJson(Map<String, dynamic> j) =>
@@ -1124,7 +1813,85 @@ class PlatformSubscription {
         billingCycle: j['billingCycle'] as String? ?? '',
         schoolName: j['schoolName'] as String?,
         planName: j['planName'] as String?,
+        startDate: _date(j['startDate']),
         endDate: _date(j['endDate']),
+      );
+}
+
+/// One message on a ticket. [side] says who wrote it — the platform or the
+/// school — which is what the thread is coloured by; comparing author names
+/// would break the moment two people share one.
+class TicketReply {
+  const TicketReply({
+    required this.id,
+    required this.userId,
+    required this.authorName,
+    required this.side,
+    required this.message,
+    required this.createdAt,
+  });
+
+  final int id;
+  final int userId;
+  final String authorName;
+
+  /// platform | school
+  final String side;
+  final String message;
+  final DateTime createdAt;
+
+  bool get isPlatform => side.toLowerCase() == 'platform';
+
+  factory TicketReply.fromJson(Map<String, dynamic> j) => TicketReply(
+    id: _int(j['id']),
+    userId: _int(j['userId']),
+    authorName: j['authorName'] as String? ?? '',
+    side: j['side'] as String? ?? 'school',
+    message: j['message'] as String? ?? '',
+    createdAt: _date(j['createdAt']) ?? DateTime.now(),
+  );
+}
+
+/// A ticket with its whole conversation.
+class SupportTicketDetail {
+  const SupportTicketDetail({
+    required this.id,
+    required this.ticketNo,
+    required this.schoolName,
+    required this.raisedByName,
+    required this.subject,
+    required this.description,
+    required this.priority,
+    required this.status,
+    required this.createdAt,
+    this.comments = const <TicketReply>[],
+  });
+
+  final int id;
+  final String ticketNo;
+  final String schoolName;
+  final String raisedByName;
+  final String subject;
+  final String description;
+  final String priority;
+  final String status;
+  final DateTime createdAt;
+  final List<TicketReply> comments;
+
+  factory SupportTicketDetail.fromJson(Map<String, dynamic> j) =>
+      SupportTicketDetail(
+        id: _int(j['id']),
+        ticketNo: j['ticketNo'] as String? ?? '',
+        schoolName: j['schoolName'] as String? ?? '',
+        raisedByName: j['raisedByName'] as String? ?? '',
+        subject: j['subject'] as String? ?? '',
+        description: j['description'] as String? ?? '',
+        priority: j['priority'] as String? ?? 'normal',
+        status: j['status'] as String? ?? 'open',
+        createdAt: _date(j['createdAt']) ?? DateTime.now(),
+        comments: ((j['comments'] as List<dynamic>?) ?? const <dynamic>[])
+            .map((dynamic e) => TicketReply.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }
 

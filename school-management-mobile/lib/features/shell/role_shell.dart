@@ -11,7 +11,11 @@ import '../staff/admin_exams_screen.dart';
 import '../staff/admin_leave_screen.dart';
 import '../staff/admin_notices_screen.dart';
 import '../staff/admin_screens.dart';
+import '../staff/my_profile_screen.dart';
 import '../staff/admin_staff_attendance_screen.dart';
+import '../staff/platform_billing_screen.dart';
+import '../staff/platform_geography_screen.dart';
+import '../staff/platform_plans_screen.dart';
 import '../staff/super_admin_screens.dart';
 import 'more_screen.dart';
 import '../staff/teacher_attendance_screen.dart';
@@ -99,6 +103,8 @@ const List<_Tab> _teacherTabs = <_Tab>[
           _buildTeacherTimetable, subtitle: 'Your periods for the week'),
       MoreEntry('My leave', Icons.beach_access_outlined, _buildTeacherLeave,
           subtitle: 'Apply, and see what has been decided'),
+      MoreEntry('My profile', Icons.person_outline, _buildMyProfile,
+          subtitle: 'Your account, and your password'),
       MoreEntry('Settings', Icons.settings_outlined, _buildSettings),
     ],
   )),
@@ -107,6 +113,7 @@ const List<_Tab> _teacherTabs = <_Tab>[
 Widget _buildTeacherResults(BuildContext _) => const TeacherResultsScreen();
 Widget _buildTeacherTimetable(BuildContext _) => const TeacherTimetableScreen();
 Widget _buildTeacherLeave(BuildContext _) => const TeacherLeaveScreen();
+Widget _buildMyProfile(BuildContext _) => const MyProfileScreen();
 Widget _buildSettings(BuildContext _) => const SettingsScreen();
 
 /// Students, Teachers and Fees keep their places; everything the office reaches
@@ -136,6 +143,8 @@ const List<_Tab> _adminTabs = <_Tab>[
       MoreEntry('Attendance report', Icons.insights_outlined,
           _buildAdminAttendanceReport,
           subtitle: 'One student over a date range'),
+      MoreEntry('My profile', Icons.person_outline, _buildMyProfile,
+          subtitle: 'Your account, and your password'),
       MoreEntry('Settings', Icons.settings_outlined, _buildSettings),
     ],
   )),
@@ -150,15 +159,50 @@ Widget _buildAdminNotices(BuildContext _) => const AdminNoticesScreen();
 Widget _buildAdminAttendanceReport(BuildContext _) =>
     const AdminAttendanceReportScreen();
 
+/// The web portal carries seven modules; these are the four the platform team
+/// opens daily, with the rest under More — the same shape as the other roles.
+///
+/// The third tab used to be labelled Plans while showing school subscriptions,
+/// which are a different thing: a plan is a row on the price list, a
+/// subscription is one school on one of them. Both exist now, under their own
+/// names.
+/// The three subscription screens sit together under More, in the order the
+/// web portal's Subscriptions menu uses: the price list, who is on what, and
+/// what that has billed. School subscriptions used to hold a bar slot of its
+/// own, which split the group and left the same screen reachable two ways once
+/// it joined the others here.
 const List<_Tab> _platformTabs = <_Tab>[
   _Tab('Home', Icons.grid_view_outlined, Icons.grid_view_rounded, PlatformHomeScreen()),
   _Tab('Schools', Icons.apartment_outlined, Icons.apartment_rounded,
       PlatformSchoolsScreen()),
-  _Tab('Plans', Icons.workspace_premium_outlined, Icons.workspace_premium_rounded,
-      PlatformSubscriptionsScreen()),
   _Tab('Support', Icons.confirmation_number_outlined,
       Icons.confirmation_number_rounded, PlatformTicketsScreen()),
+  _Tab('More', Icons.more_horiz_outlined, Icons.more_horiz, MoreScreen(
+    title: 'More',
+    entries: <MoreEntry>[
+      MoreEntry('Subscription plans', Icons.workspace_premium_outlined,
+          _buildPlatformPlans, subtitle: 'The price list'),
+      MoreEntry('School subscriptions', Icons.card_membership_outlined,
+          _buildPlatformSubscriptions,
+          subtitle: 'Which school is on which plan'),
+      MoreEntry('Billing & payments', Icons.receipt_long_outlined,
+          _buildPlatformBilling,
+          subtitle: 'What is owed, and chasing it'),
+      MoreEntry('Geography', Icons.public_outlined, _buildPlatformGeography,
+          subtitle: 'Countries, states and cities'),
+      MoreEntry('My profile', Icons.person_outline, _buildMyProfile,
+          subtitle: 'Your account, and your password'),
+      MoreEntry('Settings', Icons.settings_outlined, _buildSettings),
+    ],
+  )),
 ];
+
+Widget _buildPlatformSubscriptions(BuildContext _) =>
+    const PlatformSubscriptionsScreen();
+
+Widget _buildPlatformBilling(BuildContext _) => const PlatformBillingScreen();
+Widget _buildPlatformPlans(BuildContext _) => const PlatformPlansScreen();
+Widget _buildPlatformGeography(BuildContext _) => const PlatformGeographyScreen();
 
 /// A bottom-tab shell over a fixed set of screens.
 class _TabShell extends StatefulWidget {
@@ -175,7 +219,6 @@ class _TabShellState extends State<_TabShell> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     return Scaffold(
       // IndexedStack, not a swap: each tab keeps its scroll position and its
       // already-fetched data when you come back to it.
@@ -183,24 +226,19 @@ class _TabShellState extends State<_TabShell> {
         index: _index,
         children: <Widget>[for (final _Tab t in widget.tabs) t.screen],
       ),
-      bottomNavigationBar: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: theme.dividerTheme.color ?? theme.dividerColor),
-          ),
-        ),
-        child: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: (int i) => setState(() => _index = i),
-          destinations: <Widget>[
-            for (final _Tab t in widget.tabs)
-              NavigationDestination(
-                label: t.label,
-                icon: Icon(t.icon),
-                selectedIcon: Icon(t.activeIcon),
-              ),
-          ],
-        ),
+      // No divider above it any more: the bar is a solid block of brand colour
+      // against a light page, so a grey hairline only muddied the edge.
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (int i) => setState(() => _index = i),
+        destinations: <Widget>[
+          for (final _Tab t in widget.tabs)
+            NavigationDestination(
+              label: t.label,
+              icon: Icon(t.icon),
+              selectedIcon: Icon(t.activeIcon),
+            ),
+        ],
       ),
     );
   }
