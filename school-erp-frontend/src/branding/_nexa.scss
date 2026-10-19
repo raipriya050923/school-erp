@@ -1,0 +1,12 @@
+// Nexa Fusion. Only what differs from the defaults in styles.scss.
+//
+// Scoped to [data-brand] rather than bare :root so the two files cannot
+// fight if both are ever loaded — in a Storybook, or a side-by-side review.
+:root[data-brand="nexa"] {
+  --brand:       #2563eb;
+  --brand-dark:  #1d4ed8;
+  --brand-light: #3b82f6;
+  --brand-tint:  rgba(37, 99, 235, 0.10);
+  --brand-glow:  37, 99, 235;
+  --brand-grad:  linear-gradient(135deg, #3b82f6, #1d4ed8);
+}

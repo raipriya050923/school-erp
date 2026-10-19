@@ -1,0 +1,331 @@
+KSS INFONET - SCHOOL ERP MICROSOFT GRAPH EMAIL INTEGRATION (.NET)
+=========================================
+
+PURPOSE
+
+Send School ERP application emails securely from: noreply@kssinfonet.com
+
+Technology: - .NET / C# - Microsoft Graph API - OAuth 2.0 Client
+Credentials - Exchange Application RBAC
+
+This is NOT basic SMTP username/password authentication.
+
+CONFIGURATION
+
+MAIL_FROM_ADDRESS=noreply@kssinfonet.com MAIL_FROM_NAME=“KSS INFONET”
+
+MICROSOFT_TENANT_ID=xxx
+MICROSOFT_CLIENT_ID=xxx
+MICROSOFT_CLIENT_SECRET=xx
+
+IMPORTANT: - Use Client Secret VALUE, not Secret ID. - Client Secret
+must never be committed to Git/GitHub. - Never log the Client Secret or
+OAuth access token. - Microsoft 365 user/password credentials are not
+required.
+
+TOKEN ENDPOINT
+
+https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token
+
+Parameters: client_id={CLIENT_ID} client_secret={CLIENT_SECRET_VALUE}
+scope=https://graph.microsoft.com/.default grant_type=client_credentials
+
+SEND MAIL ENDPOINT
+
+POST
+https://graph.microsoft.com/v1.0/users/noreply@kssinfonet.com/sendMail
+
+Successful request: HTTP 202 Accepted
+
+============================================================ COMPLETE
+Program.cs ============================================================
+
+using System.Net; using System.Net.Http.Headers; using System.Text;
+using System.Text.Json;
+
+const string tenantId = “xxx”; const
+string clientId = “xxx”;
+
+const string fromEmail = “noreply@kssinfonet.com”; const string toEmail
+= “kssinfonet@gmail.com”;
+
+var clientSecret =
+Environment.GetEnvironmentVariable(“KSS_MAIL_CLIENT_SECRET”);
+
+if (string.IsNullOrWhiteSpace(clientSecret)) { Console.WriteLine(“ERROR:
+KSS_MAIL_CLIENT_SECRET environment variable not found.”); return; }
+
+Console.WriteLine($“Client Secret loaded securely. Length:
+{clientSecret.Length}”);
+
+using var httpClient = new HttpClient();
+
+try { // STEP 1: Get OAuth 2.0 access token
+
+    Console.WriteLine("Getting Microsoft Graph access token...");
+
+    var tokenUrl =
+        $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+
+    using var tokenContent = new FormUrlEncodedContent(
+        new Dictionary<string, string>
+        {
+            ["client_id"] = clientId,
+            ["client_secret"] = clientSecret,
+            ["scope"] = "https://graph.microsoft.com/.default",
+            ["grant_type"] = "client_credentials"
+        });
+
+    using var tokenResponse =
+        await httpClient.PostAsync(tokenUrl, tokenContent);
+
+    var tokenResponseText =
+        await tokenResponse.Content.ReadAsStringAsync();
+
+    if (!tokenResponse.IsSuccessStatusCode)
+    {
+        Console.WriteLine();
+        Console.WriteLine("TOKEN ERROR:");
+        Console.WriteLine(tokenResponseText);
+        return;
+    }
+
+    using var tokenJson =
+        JsonDocument.Parse(tokenResponseText);
+
+    var accessToken =
+        tokenJson.RootElement
+            .GetProperty("access_token")
+            .GetString();
+
+    if (string.IsNullOrWhiteSpace(accessToken))
+    {
+        Console.WriteLine("ERROR: Access token was not returned.");
+        return;
+    }
+
+    Console.WriteLine("Access token received successfully.");
+
+    // STEP 2: Prepare test email
+
+    var mailData = new
+    {
+        message = new
+        {
+            subject = "KSS INFONET - .NET Graph Mail Test",
+
+            body = new
+            {
+                contentType = "HTML",
+
+                content = """
+                    <h2>KSS INFONET</h2>
+                    <p>
+                        This email was sent from the
+                        <strong>.NET test application</strong>.
+                    </p>
+                    <p>
+                        Microsoft Graph OAuth 2.0 and Exchange
+                        Application RBAC are working successfully.
+                    </p>
+                    <p>
+                        From:
+                        <strong>noreply@kssinfonet.com</strong>
+                    </p>
+                    """
+            },
+
+            toRecipients = new[]
+            {
+                new
+                {
+                    emailAddress = new
+                    {
+                        address = toEmail
+                    }
+                }
+            }
+        },
+
+        saveToSentItems = true
+    };
+
+    var mailJson = JsonSerializer.Serialize(mailData);
+
+    // STEP 3: Send using Microsoft Graph
+
+    Console.WriteLine($"Sending email to {toEmail}...");
+
+    var sendMailUrl =
+        $"https://graph.microsoft.com/v1.0/users/{fromEmail}/sendMail";
+
+    using var request =
+        new HttpRequestMessage(HttpMethod.Post, sendMailUrl);
+
+    request.Headers.Authorization =
+        new AuthenticationHeaderValue("Bearer", accessToken);
+
+    request.Content =
+        new StringContent(
+            mailJson,
+            Encoding.UTF8,
+            "application/json");
+
+    using var mailResponse =
+        await httpClient.SendAsync(request);
+
+    var responseText =
+        await mailResponse.Content.ReadAsStringAsync();
+
+    if (mailResponse.StatusCode == HttpStatusCode.Accepted)
+    {
+        Console.WriteLine();
+        Console.WriteLine("==============================");
+        Console.WriteLine("EMAIL SENT SUCCESSFULLY");
+        Console.WriteLine("HTTP Status: 202 Accepted");
+        Console.WriteLine($"From: {fromEmail}");
+        Console.WriteLine($"To:   {toEmail}");
+        Console.WriteLine("==============================");
+    }
+    else
+    {
+        Console.WriteLine();
+        Console.WriteLine("EMAIL SEND FAILED");
+        Console.WriteLine(
+            $"HTTP Status: {(int)mailResponse.StatusCode} " +
+            $"{mailResponse.StatusCode}");
+
+        Console.WriteLine(responseText);
+    }
+
+} catch (Exception ex) { Console.WriteLine();
+Console.WriteLine(“UNEXPECTED ERROR:”); Console.WriteLine(ex.Message); }
+
+============================================================ LOCAL TEST
+STEPS ============================================================
+
+1.  Check .NET SDK:
+
+    dotnet –version
+
+2.  Create a test project if needed:
+
+    cd D: dotnet new console -n KssMailTest cd KssMailTest
+
+3.  Replace Program.cs with the code above.
+
+4.  In the SAME PowerShell / VS Code terminal, load the secret securely:
+
+    $secure = Read-Host “Paste Client Secret VALUE” -AsSecureString
+
+    Paste the Client Secret VALUE and press Enter.
+
+5.  Set the environment variable:
+
+    $env:KSS_MAIL_CLIENT_SECRET =
+    [System.Net.NetworkCredential]::new(““, $secure).Password
+
+6.  Optional safe check:
+
+    $env:KSS_MAIL_CLIENT_SECRET.Length
+
+    Do not print the actual secret.
+
+7.  Run:
+
+    dotnet run
+
+8.  Expected successful output:
+
+    Client Secret loaded securely. Length: 40 Getting Microsoft Graph
+    access token… Access token received successfully. Sending email to
+    kssinfonet@gmail.com…
+
+    ============================== EMAIL SENT SUCCESSFULLY HTTP Status:
+    202 Accepted From: noreply@kssinfonet.com To: kssinfonet@gmail.com
+    ==============================
+
+The .NET test has already been verified successfully by KSS INFONET.
+
+============================================================ PRODUCTION
+IMPLEMENTATION NOTES
+============================================================
+
+1.  Create a reusable MicrosoftGraphMailService in the School ERP
+    backend.
+
+2.  Keep these non-secret values in configuration:
+
+    -   TenantId
+    -   ClientId
+    -   FromAddress
+    -   FromName
+
+3.  Keep ClientSecret outside committed source/config files. Use a
+    server environment variable or approved secret store.
+
+4.  Register the mail service using .NET Dependency Injection.
+
+5.  Prefer IHttpClientFactory for HttpClient management.
+
+6.  Use OAuth client_credentials with:
+    scope=https://graph.microsoft.com/.default
+
+7.  Send through:
+    https://graph.microsoft.com/v1.0/users/noreply@kssinfonet.com/sendMail
+
+8.  HTTP 202 Accepted means Microsoft Graph accepted the send request.
+
+9.  Production mail service can expose parameters for:
+
+    -   To
+    -   Subject
+    -   HTML/Text Body
+    -   CC
+    -   BCC
+    -   Reply-To
+    -   Attachments
+
+10. Add error handling/logging, but NEVER log:
+
+    -   Client Secret
+    -   OAuth access token
+
+11. Do not use Raman Kumar’s Microsoft 365 password.
+
+12. Keep School ERP credentials separate from other KSS INFONET
+    products.
+
+============================================================ COMMON
+ERROR ============================================================
+
+AADSTS7000215 - Invalid client secret
+
+Check: - Client Secret VALUE is being used. - Secret ID is NOT being
+used. - Secret belongs to this Entra application. - Secret is not
+expired. - No characters were lost during copy/paste.
+
+============================================================ HANDOVER
+SUMMARY ============================================================
+
+Application: KSS INFONET - School ERP Mail Service
+
+Sender: noreply@kssinfonet.com
+
+Authentication: Microsoft Graph OAuth 2.0 Client Credentials
+
+Tenant ID: xxx
+
+Client ID: xxx
+
+Client Secret: Provide separately and securely. Use Client Secret VALUE,
+not Secret ID.
+
+Authorization: Exchange Application RBAC
+
+Test Status: VERIFIED SUCCESSFULLY
+
+Verified Result: HTTP 202 Accepted Email successfully delivered from
+noreply@kssinfonet.com.
+
+KSS INFONET Turns Idea into reality

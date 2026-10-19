@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<ISubjectRepository, SubjectRepository>();
         services.AddScoped<IStaffAttendanceRepository, StaffAttendanceRepository>();
         services.AddScoped<ILeaveRepository, LeaveRepository>();
+        services.AddScoped<IMessageTemplateRepository, MessageTemplateRepository>();
         services.AddScoped<ITimetableRepository, TimetableRepository>();
         services.AddScoped<IFeeRepository, FeeRepository>();
         services.AddScoped<IFeeSubmissionRepository, FeeSubmissionRepository>();
@@ -78,10 +79,23 @@ public static class DependencyInjection
         var email = config.GetSection("HostingerEmailSettings").Get<EmailOptions>()
                     ?? new EmailOptions();
         services.AddSingleton(email);
-        if (email.IsConfigured)
-            services.AddScoped<INotificationSender, SmtpEmailSender>();
-        else
-            services.AddScoped<INotificationSender, LoggingNotificationSender>();
+        // The console's row wins over the file once it carries a host; the provider caches it
+        // and is invalidated on save. Registered unconditionally, so a deployment that started
+        // with no mail configuration can be given one without a restart.
+        services.AddSingleton<IEmailSettingsProvider, EmailSettingsProvider>();
+        services.AddScoped<IEmailSettingsRepository, EmailSettingsRepository>();
+        // Always the SMTP sender now. Whether mail can actually leave is a property of the
+        // settings at send time rather than of the file at startup: a deployment that fills
+        // the mailbox in through the console must not need a restart to start using it. The
+        // sender resolves its settings per message and logs instead of sending when it finds
+        // no host, which is what the stub used to do.
+        // Both transports are registered as themselves, and the dispatcher is what everything
+        // else injects. It reads which provider is live per message, so changing it in the
+        // console takes effect on the next send rather than the next restart.
+        services.AddScoped<SmtpEmailSender>();
+        services.AddHttpClient(nameof(GraphEmailSender));
+        services.AddScoped<GraphEmailSender>();
+        services.AddScoped<INotificationSender, MailDispatcher>();
         // The same provider reached through its own typed options, for the endpoints under
         // /api/super-admin/email/hostinger that exercise it directly. Not registered as
         // INotificationSender because the default above already is one.

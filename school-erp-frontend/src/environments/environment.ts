@@ -1,29 +1,36 @@
 /**
  * Runtime configuration.
  *
- * The API base is derived from the browser's hostname:
- *   - localhost / 127.0.0.1  → dev API on http://localhost:5162/api
- *   - anything else          → same origin as the app, at `/api`
- *     (i.e. the API is served/proxied under the same domain in production)
+ * The API base is chosen from the browser's hostname:
+ *   - localhost / 127.0.0.1  -> dev API on http://localhost:5204/api
+ *   - anything else          -> https://school.nexafusion.cloud/api
  *
- * All per-portal endpoints are derived from that single base, so there is
- * only one place to change.
+ * One deployed API serves every client. The clients differ in layout and
+ * branding, not in data, so kss, nexa and the default build all call the same
+ * host; which school a request sees comes from the signed token, not the URL.
+ *
+ * `shell` and `brand` are what make one codebase serve two clients. They are
+ * build-time constants, swapped by the fileReplacements in angular.json, so a
+ * build ships one layout's markup and one client's tokens rather than both.
  */
 const hostname = window.location.hostname;
 const production = hostname !== 'localhost' && hostname !== '127.0.0.1';
 
-const apiBaseUrl = production
-  ? `${window.location.origin}/api`
-  : 'http://localhost:5204/api';
+const apiBaseUrl = production ? 'https://school.nexafusion.cloud/api' : 'http://localhost:5204/api';
 
 export const environment = {
   production,
+  /** 'masthead' puts the module nav across the top; 'rail' puts it in a left panel. */
+  shell: 'masthead' as 'masthead' | 'rail',
+  /** Stamped on <html> as data-brand, so stylesheets can differ without code doing so. */
+  brand: 'kss' as 'kss' | 'nexa',
+  productName: 'KSS INFONET',
   apiBaseUrl,
   authApi: `${apiBaseUrl}/auth`,
   superAdminApi: `${apiBaseUrl}/super-admin`,
   adminApi: `${apiBaseUrl}/admin`,
   teacherApi: `${apiBaseUrl}/teacher`,
   studentApi: `${apiBaseUrl}/student`,
-  /** Shared country/state/city master — readable by every signed-in role. */
+  /** Shared country/state/city master - readable by every signed-in role. */
   geographyApi: `${apiBaseUrl}/geography`,
 };

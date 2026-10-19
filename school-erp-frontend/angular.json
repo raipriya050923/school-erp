@@ -32,7 +32,8 @@
               }
             ],
             "styles": [
-              "src/styles.scss"
+              "src/styles.scss",
+              "src/branding/branding.scss"
             ],
             "scripts": []
           },
@@ -56,6 +57,30 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "kss": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.kss.ts"
+                }
+              ],
+              "styles": [
+                "src/styles.scss",
+                "src/branding/_kss.scss"
+              ]
+            },
+            "nexa": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.nexa.ts"
+                }
+              ],
+              "styles": [
+                "src/styles.scss",
+                "src/branding/_nexa.scss"
+              ]
             }
           },
           "defaultConfiguration": "production"
@@ -71,6 +96,12 @@
             },
             "development": {
               "buildTarget": "school-erp-frontend:build:development"
+            },
+            "kss": {
+              "buildTarget": "school-erp-frontend:build:development,kss"
+            },
+            "nexa": {
+              "buildTarget": "school-erp-frontend:build:development,nexa"
             }
           },
           "defaultConfiguration": "development"

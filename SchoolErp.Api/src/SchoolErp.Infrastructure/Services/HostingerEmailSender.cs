@@ -25,7 +25,7 @@ public class HostingerEmailSender
     public HostingerEmailSender(HostingerEmailOptions options, ILogger<SmtpEmailSender> logger)
     {
         Options = options;
-        _smtp = new SmtpEmailSender(options, logger);
+        _smtp = SmtpEmailSender.ForFixedSettings(options, logger);
     }
 
     public Task SendEmailAsync(string toEmail, string subject, string body, CancellationToken ct = default)

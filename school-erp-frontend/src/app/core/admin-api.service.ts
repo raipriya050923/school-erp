@@ -460,10 +460,57 @@ export interface FeeSubmissionDto {
 
 /* ===================== Service ===================== */
 
+/** A message as a school sees it. Mirrors SchoolTemplateDto. */
+export interface SchoolMessageTemplate {
+  channel: 'sms' | 'email';
+  code: string;
+  locale: string;
+  subject: string | null;
+  body: string;
+  isActive: boolean;
+  /** True when this school supplied its own wording rather than inheriting. */
+  isOverridden: boolean;
+  /** False when the platform reserves this message — an OTP, for instance. */
+  canEdit: boolean;
+  /** The platform's wording, so a school can see what it is departing from. */
+  platformBody: string;
+  platformSubject: string | null;
+}
+
+export interface SaveSchoolTemplate {
+  subject: string | null;
+  body: string;
+  isActive: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminApiService {
   private readonly http = inject(HttpClient);
   private readonly base = environment.adminApi;
+
+  /* ---------------- message templates ---------------- */
+
+  /**
+   * Every message that goes out in this school's name, resolved: the school's own wording
+   * where it has supplied one, the platform's where it has not.
+   */
+  getMessageTemplates(): Observable<SchoolMessageTemplate[]> {
+    return this.http.get<SchoolMessageTemplate[]>(`${this.base}/templates`);
+  }
+
+  /** Supplies this school's own wording. Refused by the API where canEdit is false. */
+  saveMessageTemplate(
+    channel: string, code: string, locale: string, dto: SaveSchoolTemplate,
+  ): Observable<void> {
+    return this.http.put<void>(
+      `${this.base}/templates/${channel}/${code}?locale=${encodeURIComponent(locale)}`, dto);
+  }
+
+  /** Drops back to the platform's wording. */
+  clearMessageTemplate(channel: string, code: string, locale: string): Observable<void> {
+    return this.http.delete<void>(
+      `${this.base}/templates/${channel}/${code}?locale=${encodeURIComponent(locale)}`);
+  }
 
   /** The guardian on a student; null when the school has never recorded one. */
   getParentAccount(studentId: number): Observable<ParentAccount | null> {
