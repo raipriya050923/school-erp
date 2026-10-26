@@ -27,6 +27,45 @@ class TeacherProfile {
   );
 }
 
+/// One assignment on the dashboard's list. The counters say how much is
+/// waiting; this says which pieces of work it is.
+class TeacherHomework {
+  const TeacherHomework({
+    required this.id,
+    required this.title,
+    required this.subject,
+    required this.classLabel,
+    required this.dueDate,
+    required this.submitted,
+    required this.total,
+    required this.status,
+  });
+
+  final int id;
+  final String title;
+  final String? subject;
+  final String? classLabel;
+  final DateTime? dueDate;
+
+  /// How many of the class have handed it in, out of how many were set it.
+  final int submitted;
+  final int total;
+
+  /// open | grading | graded
+  final String status;
+
+  factory TeacherHomework.fromJson(Map<String, dynamic> j) => TeacherHomework(
+    id: _int(j['id']),
+    title: (j['title'] as String?) ?? '',
+    subject: j['subject'] as String?,
+    classLabel: j['classLabel'] as String?,
+    dueDate: _date(j['dueDate']),
+    submitted: _int(j['submitted']),
+    total: _int(j['total']),
+    status: (j['status'] as String?) ?? '',
+  );
+}
+
 class TeacherDashboard {
   const TeacherDashboard({
     required this.profile,
@@ -34,6 +73,7 @@ class TeacherDashboard {
     required this.studentsTaught,
     required this.submissionsToGrade,
     required this.openHomework,
+    required this.recentHomework,
   });
 
   final TeacherProfile profile;
@@ -41,6 +81,7 @@ class TeacherDashboard {
   final int studentsTaught;
   final int submissionsToGrade;
   final int openHomework;
+  final List<TeacherHomework> recentHomework;
 
   factory TeacherDashboard.fromJson(Map<String, dynamic> j) => TeacherDashboard(
     profile: TeacherProfile.fromJson(
@@ -50,6 +91,11 @@ class TeacherDashboard {
     studentsTaught: _int(j['studentsTaught']),
     submissionsToGrade: _int(j['submissionsToGrade']),
     openHomework: _int(j['openHomework']),
+    recentHomework:
+        ((j['recentHomework'] as List<dynamic>?) ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .map(TeacherHomework.fromJson)
+            .toList(),
   );
 }
 
@@ -142,6 +188,57 @@ class LeaveType {
 
 /* =================================================== school-admin portal == */
 
+/// One day of school-wide attendance, for the dashboard's trend.
+class AttendancePoint {
+  const AttendancePoint({
+    required this.date,
+    required this.percent,
+    required this.present,
+    required this.total,
+  });
+
+  final DateTime date;
+  final double percent;
+  final int present;
+  final int total;
+
+  factory AttendancePoint.fromJson(Map<String, dynamic> j) => AttendancePoint(
+    date: _date(j['date']) ?? DateTime.now(),
+    percent: _dbl(j['percent']),
+    present: _int(j['present']),
+    total: _int(j['total']),
+  );
+}
+
+/// A student admitted recently, as the dashboard lists them.
+class RecentAdmission {
+  const RecentAdmission({
+    required this.name,
+    required this.className,
+    required this.sectionName,
+    required this.admissionDate,
+  });
+
+  final String name;
+  final String? className;
+  final String? sectionName;
+  final DateTime? admissionDate;
+
+  /// `Grade 6-A`, or just the class when the section is unknown.
+  String get classLabel {
+    if (className == null || className!.isEmpty) return '';
+    if (sectionName == null || sectionName!.isEmpty) return className!;
+    return '$className-$sectionName';
+  }
+
+  factory RecentAdmission.fromJson(Map<String, dynamic> j) => RecentAdmission(
+    name: j['name'] as String? ?? '',
+    className: j['className'] as String?,
+    sectionName: j['sectionName'] as String?,
+    admissionDate: _date(j['admissionDate']),
+  );
+}
+
 class AdminDashboard {
   const AdminDashboard({
     required this.schoolName,
@@ -154,7 +251,12 @@ class AdminDashboard {
     required this.feesBilled,
     required this.feesCollected,
     required this.feesOverdue,
+    required this.feesDue,
     required this.unpaidInvoices,
+    required this.attendanceToday,
+    required this.attendanceTrend,
+    required this.recentAdmissions,
+    required this.latestNotices,
     this.subscription,
   });
 
@@ -168,7 +270,30 @@ class AdminDashboard {
   final double feesBilled;
   final double feesCollected;
   final double feesOverdue;
+
+  /// Billed but not yet collected. The web dashboard's "Fees Outstanding".
+  final double feesDue;
   final int unpaidInvoices;
+
+  /// Percent present today, or null when nobody has marked attendance yet —
+  /// which is a different thing from nobody turning up, so it is not zero.
+  final double? attendanceToday;
+
+  /// The last 30 marked days, oldest first.
+  final List<AttendancePoint> attendanceTrend;
+  final List<RecentAdmission> recentAdmissions;
+  final List<SchoolNotice> latestNotices;
+
+  /// The mean of the trend — the web header's "Avg attendance". Null while no
+  /// day has been marked.
+  double? get averageAttendance {
+    if (attendanceTrend.isEmpty) return null;
+    final double sum = attendanceTrend.fold<double>(
+      0,
+      (double a, AttendancePoint p) => a + p.percent,
+    );
+    return sum / attendanceTrend.length;
+  }
 
   /// Null for a school onboarded before plans existed.
   final SubscriptionStatus? subscription;
@@ -184,7 +309,28 @@ class AdminDashboard {
     feesBilled: _dbl(j['feesBilled']),
     feesCollected: _dbl(j['feesCollected']),
     feesOverdue: _dbl(j['feesOverdue']),
+    feesDue: _dbl(j['feesDue']),
     unpaidInvoices: _int(j['unpaidInvoices']),
+    // Read defensively: an API one version behind simply shows no chart,
+    // rather than failing the whole dashboard.
+    attendanceToday: j['attendanceToday'] == null
+        ? null
+        : _dbl(j['attendanceToday']),
+    attendanceTrend:
+        ((j['attendanceTrend'] as List<dynamic>?) ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .map(AttendancePoint.fromJson)
+            .toList(),
+    recentAdmissions:
+        ((j['recentAdmissions'] as List<dynamic>?) ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .map(RecentAdmission.fromJson)
+            .toList(),
+    latestNotices:
+        ((j['latestNotices'] as List<dynamic>?) ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .map(SchoolNotice.fromJson)
+            .toList(),
     subscription: j['subscription'] == null
         ? null
         : SubscriptionStatus.fromJson(j['subscription'] as Map<String, dynamic>),
@@ -636,6 +782,42 @@ class FeeSummary {
 /// One subject on the school's subject master. What a teacher can be assigned
 /// and what an exam paper is set in — picked from here rather than typed, so
 /// "Maths" and "Mathematics" cannot both end up on the timetable.
+/// A year the school runs on. One is current; the rest are history or ahead.
+class AcademicYear {
+  const AcademicYear({
+    required this.id,
+    required this.name,
+    required this.startDate,
+    required this.endDate,
+    required this.isCurrent,
+    required this.usageCount,
+  });
+
+  final int id;
+  final String name;
+  final DateTime startDate;
+  final DateTime endDate;
+
+  /// The year new work is filed under. Exactly one is, and setting another
+  /// clears this one.
+  final bool isCurrent;
+
+  /// How many records already point at this year. Non-zero means deleting it
+  /// would take them with it, which the API refuses.
+  final int usageCount;
+
+  bool get canDelete => !isCurrent && usageCount == 0;
+
+  factory AcademicYear.fromJson(Map<String, dynamic> j) => AcademicYear(
+    id: _int(j['id']),
+    name: j['name'] as String? ?? '',
+    startDate: _date(j['startDate']) ?? DateTime.now(),
+    endDate: _date(j['endDate']) ?? DateTime.now(),
+    isCurrent: j['isCurrent'] as bool? ?? false,
+    usageCount: _int(j['usageCount']),
+  );
+}
+
 class SchoolSubject {
   const SchoolSubject({
     required this.id,
@@ -1928,5 +2110,817 @@ class SupportTicket {
     schoolName: j['schoolName'] as String?,
     raisedByName: j['raisedByName'] as String?,
     createdAt: _date(j['createdAt']),
+  );
+}
+
+/* ------------------------------------------------------- fee structure -- */
+
+/// A charge the school levies.
+///
+/// [pricingMode] decides where the amount comes from: a `class` head is priced
+/// once per class on the fee structure, a `distance` head is priced per student
+/// from their distance band, which is what the transport screen is for.
+class FeeHead {
+  const FeeHead({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.frequency,
+    required this.pricingMode,
+    required this.isRefundable,
+    required this.isActive,
+    required this.inUse,
+  });
+
+  final int id;
+  final String name;
+  final String? description;
+
+  /// one_time | monthly | quarterly | half_yearly | yearly
+  final String frequency;
+
+  /// class | distance
+  final String pricingMode;
+  final bool isRefundable;
+  final bool isActive;
+
+  /// How many classes are priced for it.
+  final int inUse;
+
+  bool get isDistancePriced => pricingMode == 'distance';
+
+  factory FeeHead.fromJson(Map<String, dynamic> j) => FeeHead(
+    id: _int(j['id']),
+    name: j['name'] as String? ?? '',
+    description: j['description'] as String?,
+    frequency: j['frequency'] as String? ?? 'monthly',
+    pricingMode: j['pricingMode'] as String? ?? 'class',
+    isRefundable: j['isRefundable'] as bool? ?? false,
+    isActive: j['isActive'] as bool? ?? true,
+    inUse: _int(j['inUse']),
+  );
+}
+
+/// One priced class/head pair. Unpriced pairs are absent rather than zero.
+class FeeStructureCell {
+  const FeeStructureCell({
+    required this.classId,
+    required this.headId,
+    required this.amount,
+  });
+
+  final int classId;
+  final int headId;
+  final double amount;
+
+  factory FeeStructureCell.fromJson(Map<String, dynamic> j) => FeeStructureCell(
+    classId: _int(j['classId']),
+    headId: _int(j['headId']),
+    amount: _dbl(j['amount']),
+  );
+}
+
+/// The whole fee structure for a year: classes down the side, heads across the
+/// top, and the amounts set between them.
+class FeeStructureGrid {
+  const FeeStructureGrid({
+    required this.academicYearId,
+    required this.academicYearName,
+    required this.classes,
+    required this.heads,
+    required this.cells,
+    required this.monthlyTotals,
+  });
+
+  final int? academicYearId;
+  final String? academicYearName;
+
+  /// id → name, in the order the API gave them.
+  final List<MapEntry<int, String>> classes;
+  final List<FeeHead> heads;
+  final List<FeeStructureCell> cells;
+
+  /// Class name → what one monthly invoice comes to.
+  final Map<String, double> monthlyTotals;
+
+  /// The amount set for a pair, or null when it has never been priced — which
+  /// is a different thing from priced at zero.
+  double? amountFor(int classId, int headId) {
+    for (final FeeStructureCell c in cells) {
+      if (c.classId == classId && c.headId == headId) return c.amount;
+    }
+    return null;
+  }
+
+  factory FeeStructureGrid.fromJson(Map<String, dynamic> j) => FeeStructureGrid(
+    academicYearId: j['academicYearId'] == null ? null : _int(j['academicYearId']),
+    academicYearName: j['academicYearName'] as String?,
+    classes: ((j['classes'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map((Map<String, dynamic> c) =>
+            MapEntry<int, String>(_int(c['classId']), c['className'] as String? ?? ''))
+        .toList(),
+    heads: ((j['heads'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(FeeHead.fromJson)
+        .toList(),
+    cells: ((j['cells'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(FeeStructureCell.fromJson)
+        .toList(),
+    monthlyTotals: <String, double>{
+      for (final MapEntry<String, dynamic> e
+          in ((j['monthlyTotals'] as Map<String, dynamic>?) ??
+                  const <String, dynamic>{})
+              .entries)
+        e.key: _dbl(e.value),
+    },
+  );
+}
+
+/* ----------------------------------------------------------- transport -- */
+
+/// One distance band. [fromKm] is derived by the API from the band below, so a
+/// row reads "3 – 6 km" without the client working it out.
+class TransportSlab {
+  const TransportSlab({
+    required this.id,
+    required this.fromKm,
+    required this.upToKm,
+    required this.amount,
+    required this.riders,
+  });
+
+  final int id;
+  final double fromKm;
+  final double upToKm;
+  final double amount;
+  final int riders;
+
+  factory TransportSlab.fromJson(Map<String, dynamic> j) => TransportSlab(
+    id: _int(j['id']),
+    fromKm: _dbl(j['fromKm']),
+    upToKm: _dbl(j['upToKm']),
+    amount: _dbl(j['amount']),
+    riders: _int(j['riders']),
+  );
+}
+
+/// One student on the transport list, with what their distance currently earns.
+class TransportStudent {
+  const TransportStudent({
+    required this.studentId,
+    required this.name,
+    required this.admissionNo,
+    required this.className,
+    required this.sectionName,
+    required this.usesTransport,
+    required this.distanceKm,
+    required this.pickupPoint,
+    required this.amountOverride,
+    required this.note,
+    required this.amount,
+    required this.status,
+    required this.matchedSlabKm,
+  });
+
+  final int studentId;
+  final String name;
+  final String admissionNo;
+  final String? className;
+  final String? sectionName;
+  final bool usesTransport;
+  final double? distanceKm;
+  final String? pickupPoint;
+  final double? amountOverride;
+  final String? note;
+
+  /// What they will actually be billed; zero when not billable.
+  final double amount;
+
+  /// priced | not_riding | no_distance | beyond_slabs | no_slabs
+  final String status;
+
+  /// The ceiling of the band that priced them, or null on an override.
+  final double? matchedSlabKm;
+
+  String get classLabel {
+    if (className == null || className!.isEmpty) return '';
+    if (sectionName == null || sectionName!.isEmpty) return className!;
+    return '$className-$sectionName';
+  }
+
+  factory TransportStudent.fromJson(Map<String, dynamic> j) => TransportStudent(
+    studentId: _int(j['studentId']),
+    name: j['name'] as String? ?? '',
+    admissionNo: j['admissionNo'] as String? ?? '',
+    className: j['className'] as String?,
+    sectionName: j['sectionName'] as String?,
+    usesTransport: j['usesTransport'] as bool? ?? false,
+    distanceKm: j['distanceKm'] == null ? null : _dbl(j['distanceKm']),
+    pickupPoint: j['pickupPoint'] as String?,
+    amountOverride:
+        j['amountOverride'] == null ? null : _dbl(j['amountOverride']),
+    note: j['note'] as String?,
+    amount: _dbl(j['amount']),
+    status: j['status'] as String? ?? 'not_riding',
+    matchedSlabKm:
+        j['matchedSlabKm'] == null ? null : _dbl(j['matchedSlabKm']),
+  );
+}
+
+/// The counts the transport header shows, so what needs attention is visible
+/// without reading 1,200 rows.
+class TransportSummary {
+  const TransportSummary({
+    required this.riders,
+    required this.notRiding,
+    required this.needsDistance,
+    required this.beyondSlabs,
+    required this.monthlyTotal,
+  });
+
+  final int riders;
+  final int notRiding;
+  final int needsDistance;
+  final int beyondSlabs;
+  final double monthlyTotal;
+
+  factory TransportSummary.fromJson(Map<String, dynamic> j) => TransportSummary(
+    riders: _int(j['riders']),
+    notRiding: _int(j['notRiding']),
+    needsDistance: _int(j['needsDistance']),
+    beyondSlabs: _int(j['beyondSlabs']),
+    monthlyTotal: _dbl(j['monthlyTotal']),
+  );
+}
+
+class TransportGrid {
+  const TransportGrid({
+    required this.academicYearName,
+    required this.feeHeadName,
+    required this.feeHeadFrequency,
+    required this.slabs,
+    required this.students,
+    required this.summary,
+  });
+
+  final String? academicYearName;
+
+  /// Null when no fee head is marked distance-priced, which is the state in
+  /// which this screen can do nothing useful and says so.
+  final String? feeHeadName;
+  final String? feeHeadFrequency;
+  final List<TransportSlab> slabs;
+  final List<TransportStudent> students;
+  final TransportSummary summary;
+
+  factory TransportGrid.fromJson(Map<String, dynamic> j) => TransportGrid(
+    academicYearName: j['academicYearName'] as String?,
+    feeHeadName: j['feeHeadName'] as String?,
+    feeHeadFrequency: j['feeHeadFrequency'] as String?,
+    slabs: ((j['slabs'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(TransportSlab.fromJson)
+        .toList(),
+    students: ((j['students'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(TransportStudent.fromJson)
+        .toList(),
+    summary: TransportSummary.fromJson(
+      (j['summary'] as Map<String, dynamic>?) ?? const <String, dynamic>{},
+    ),
+  );
+}
+
+/* ------------------------------------------------------------ timetable -- */
+
+/// A period as the admin manages it.
+///
+/// Named apart from the student portal's `TimetablePeriod`, which carries a
+/// ready-made time label and nothing to edit. This one has the parts a school
+/// day is actually decided from: a start, a duration, and whether it holds a
+/// class at all.
+class AdminPeriod {
+  const AdminPeriod({
+    required this.id,
+    required this.periodNo,
+    required this.name,
+    required this.startTime,
+    required this.endTime,
+    required this.durationMinutes,
+    required this.isBreak,
+    required this.scheduledCount,
+  });
+
+  final int id;
+
+  /// Its running position in the day, breaks included — the number the grid
+  /// cells are keyed on.
+  final int periodNo;
+  final String name;
+
+  /// "HH:mm" on a 24-hour clock.
+  final String startTime;
+  final String endTime;
+  final int durationMinutes;
+
+  /// A break holds no class.
+  final bool isBreak;
+
+  /// How many cells school-wide sit in this period, so a delete can say what
+  /// it would strand.
+  final int scheduledCount;
+
+  String get timeLabel => '$startTime – $endTime';
+
+  factory AdminPeriod.fromJson(Map<String, dynamic> j) => AdminPeriod(
+    id: _int(j['id']),
+    periodNo: _int(j['periodNo']),
+    name: j['name'] as String? ?? '',
+    startTime: j['startTime'] as String? ?? '',
+    endTime: j['endTime'] as String? ?? '',
+    durationMinutes: _int(j['durationMinutes']),
+    isBreak: j['isBreak'] as bool? ?? false,
+    scheduledCount: _int(j['scheduledCount']),
+  );
+}
+
+/// One cell of the grid: what is taught, by whom, where.
+class TimetableCell {
+  const TimetableCell({
+    required this.dayOfWeek,
+    required this.periodNo,
+    required this.subject,
+    required this.teacherStaffId,
+    required this.teacherName,
+    required this.room,
+  });
+
+  final int dayOfWeek;
+  final int periodNo;
+  final String? subject;
+  final int? teacherStaffId;
+  final String? teacherName;
+  final String? room;
+
+  bool get isEmpty => subject == null || subject!.isEmpty;
+
+  factory TimetableCell.fromJson(Map<String, dynamic> j) => TimetableCell(
+    dayOfWeek: _int(j['dayOfWeek']),
+    periodNo: _int(j['periodNo']),
+    subject: j['subject'] as String?,
+    teacherStaffId:
+        j['teacherStaffId'] == null ? null : _int(j['teacherStaffId']),
+    teacherName: j['teacherName'] as String?,
+    room: j['room'] as String?,
+  );
+}
+
+/// A subject the class studies, with the teacher assigned to teach it here.
+///
+/// The teacher is never picked slot by slot — it comes from this assignment —
+/// so the timetable cannot contradict Subjects & Teachers.
+class TimetableSubjectOption {
+  const TimetableSubjectOption({
+    required this.subject,
+    required this.teacherStaffId,
+    required this.teacherName,
+  });
+
+  final String subject;
+  final int? teacherStaffId;
+  final String? teacherName;
+
+  factory TimetableSubjectOption.fromJson(Map<String, dynamic> j) =>
+      TimetableSubjectOption(
+        subject: j['subject'] as String? ?? '',
+        teacherStaffId:
+            j['teacherStaffId'] == null ? null : _int(j['teacherStaffId']),
+        teacherName: j['teacherName'] as String?,
+      );
+}
+
+/// One section's row in the day grid.
+class DayRow {
+  const DayRow({
+    required this.classId,
+    required this.className,
+    required this.sectionId,
+    required this.sectionName,
+    required this.cells,
+    required this.subjects,
+  });
+
+  final int classId;
+  final String className;
+  final int sectionId;
+  final String sectionName;
+  final List<TimetableCell> cells;
+  final List<TimetableSubjectOption> subjects;
+
+  String get label => '$className-$sectionName';
+
+  TimetableCell? cellAt(int periodNo) {
+    for (final TimetableCell c in cells) {
+      if (c.periodNo == periodNo) return c;
+    }
+    return null;
+  }
+
+  int get filledCount => cells.where((TimetableCell c) => !c.isEmpty).length;
+
+  factory DayRow.fromJson(Map<String, dynamic> j) => DayRow(
+    classId: _int(j['classId']),
+    className: j['className'] as String? ?? '',
+    sectionId: _int(j['sectionId']),
+    sectionName: j['sectionName'] as String? ?? '',
+    cells: ((j['cells'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(TimetableCell.fromJson)
+        .toList(),
+    subjects: ((j['subjects'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(TimetableSubjectOption.fromJson)
+        .toList(),
+  );
+}
+
+/// Every section's periods for one day.
+class DayTimetable {
+  const DayTimetable({
+    required this.dayOfWeek,
+    required this.periods,
+    required this.rows,
+    required this.workingDays,
+  });
+
+  final int dayOfWeek;
+  final List<AdminPeriod> periods;
+  final List<DayRow> rows;
+
+  /// The days this school runs; the rest are not offered.
+  final List<int> workingDays;
+
+  factory DayTimetable.fromJson(Map<String, dynamic> j) => DayTimetable(
+    dayOfWeek: _int(j['dayOfWeek']),
+    periods: ((j['periods'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(AdminPeriod.fromJson)
+        .toList(),
+    rows: ((j['rows'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(DayRow.fromJson)
+        .toList(),
+    workingDays: ((j['workingDays'] as List<dynamic>?) ?? const <dynamic>[])
+        .map(_int)
+        .toList(),
+  );
+}
+
+/// A period this teacher already teaches.
+class TeacherWeekCell {
+  const TeacherWeekCell({
+    required this.dayOfWeek,
+    required this.periodNo,
+    required this.className,
+    required this.sectionName,
+    required this.subject,
+    required this.room,
+  });
+
+  final int dayOfWeek;
+  final int periodNo;
+  final String? className;
+  final String? sectionName;
+  final String? subject;
+  final String? room;
+
+  String get label => '$className-$sectionName';
+
+  factory TeacherWeekCell.fromJson(Map<String, dynamic> j) => TeacherWeekCell(
+    dayOfWeek: _int(j['dayOfWeek']),
+    periodNo: _int(j['periodNo']),
+    className: j['className'] as String?,
+    sectionName: j['sectionName'] as String?,
+    subject: j['subject'] as String?,
+    room: j['room'] as String?,
+  );
+}
+
+/// A class/section/subject this teacher may be scheduled for.
+class TeacherAssignmentOption {
+  const TeacherAssignmentOption({
+    required this.classId,
+    required this.className,
+    required this.sectionId,
+    required this.sectionName,
+    required this.subject,
+  });
+
+  final int classId;
+  final String className;
+  final int sectionId;
+  final String sectionName;
+  final String subject;
+
+  String get label => '$className-$sectionName · $subject';
+
+  factory TeacherAssignmentOption.fromJson(Map<String, dynamic> j) =>
+      TeacherAssignmentOption(
+        classId: _int(j['classId']),
+        className: j['className'] as String? ?? '',
+        sectionId: _int(j['sectionId']),
+        sectionName: j['sectionName'] as String? ?? '',
+        subject: j['subject'] as String? ?? '',
+      );
+}
+
+/// A period already taken in one of this teacher's sections, by them or by a
+/// colleague — so the picker can warn before an admin overwrites it.
+class SectionBusy {
+  const SectionBusy({
+    required this.dayOfWeek,
+    required this.periodNo,
+    required this.className,
+    required this.sectionName,
+    required this.subject,
+    required this.teacherName,
+  });
+
+  final int dayOfWeek;
+  final int periodNo;
+  final String className;
+  final String sectionName;
+  final String? subject;
+  final String? teacherName;
+
+  String get label => '$className-$sectionName';
+
+  factory SectionBusy.fromJson(Map<String, dynamic> j) => SectionBusy(
+    dayOfWeek: _int(j['dayOfWeek']),
+    periodNo: _int(j['periodNo']),
+    className: j['className'] as String? ?? '',
+    sectionName: j['sectionName'] as String? ?? '',
+    subject: j['subject'] as String?,
+    teacherName: j['teacherName'] as String?,
+  );
+}
+
+class TeacherWeek {
+  const TeacherWeek({
+    required this.staffId,
+    required this.teacherName,
+    required this.periods,
+    required this.cells,
+    required this.options,
+    required this.sectionBusy,
+    required this.workingDays,
+  });
+
+  final int staffId;
+  final String teacherName;
+  final List<AdminPeriod> periods;
+  final List<TeacherWeekCell> cells;
+  final List<TeacherAssignmentOption> options;
+  final List<SectionBusy> sectionBusy;
+  final List<int> workingDays;
+
+  TeacherWeekCell? cellAt(int day, int periodNo) {
+    for (final TeacherWeekCell c in cells) {
+      if (c.dayOfWeek == day && c.periodNo == periodNo) return c;
+    }
+    return null;
+  }
+
+  /// What else is already in that period for a section, if anything.
+  SectionBusy? busyAt(int day, int periodNo, String className, String section) {
+    for (final SectionBusy b in sectionBusy) {
+      if (b.dayOfWeek == day &&
+          b.periodNo == periodNo &&
+          b.className == className &&
+          b.sectionName == section) {
+        return b;
+      }
+    }
+    return null;
+  }
+
+  factory TeacherWeek.fromJson(Map<String, dynamic> j) => TeacherWeek(
+    staffId: _int(j['staffId']),
+    teacherName: j['teacherName'] as String? ?? '',
+    periods: ((j['periods'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(AdminPeriod.fromJson)
+        .toList(),
+    cells: ((j['cells'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(TeacherWeekCell.fromJson)
+        .toList(),
+    options: ((j['options'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(TeacherAssignmentOption.fromJson)
+        .toList(),
+    sectionBusy: ((j['sectionBusy'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(SectionBusy.fromJson)
+        .toList(),
+    workingDays: ((j['workingDays'] as List<dynamic>?) ?? const <dynamic>[])
+        .map(_int)
+        .toList(),
+  );
+}
+
+/// What an auto-fill run did, so it can be seen to have worked before the grid
+/// is reviewed.
+class AutoFillResult {
+  const AutoFillResult({
+    required this.filled,
+    required this.leftEmpty,
+    required this.notes,
+  });
+
+  final int filled;
+  final int leftEmpty;
+  final List<String> notes;
+
+  factory AutoFillResult.fromJson(Map<String, dynamic> j) => AutoFillResult(
+    filled: _int(j['filled']),
+    leftEmpty: _int(j['leftEmpty']),
+    notes: ((j['notes'] as List<dynamic>?) ?? const <dynamic>[])
+        .map((dynamic e) => '$e')
+        .toList(),
+  );
+}
+
+/// How many cells a reset removed.
+class ResetResult {
+  const ResetResult({required this.cleared, required this.scope});
+
+  final int cleared;
+  final String scope;
+
+  factory ResetResult.fromJson(Map<String, dynamic> j) => ResetResult(
+    cleared: _int(j['cleared']),
+    scope: j['scope'] as String? ?? '',
+  );
+}
+
+/* ----------------------------------------------------------- curriculum -- */
+
+/// A subject the school offers, flagged with whether this class studies it.
+class ClassSubjectOption {
+  const ClassSubjectOption({
+    required this.subjectId,
+    required this.name,
+    required this.selected,
+    required this.hasTeacher,
+  });
+
+  final int subjectId;
+  final String name;
+  final bool selected;
+
+  /// Whether any section of this class has a teacher for it yet.
+  final bool hasTeacher;
+
+  factory ClassSubjectOption.fromJson(Map<String, dynamic> j) =>
+      ClassSubjectOption(
+        subjectId: _int(j['subjectId']),
+        name: j['name'] as String? ?? '',
+        selected: j['selected'] as bool? ?? false,
+        hasTeacher: j['hasTeacher'] as bool? ?? false,
+      );
+}
+
+/// The teacher teaching one subject to one section — a cell of the grid.
+class AssignmentCell {
+  const AssignmentCell({
+    required this.sectionId,
+    required this.sectionName,
+    required this.staffId,
+    required this.teacherName,
+  });
+
+  final int sectionId;
+  final String sectionName;
+  final int? staffId;
+  final String? teacherName;
+
+  factory AssignmentCell.fromJson(Map<String, dynamic> j) => AssignmentCell(
+    sectionId: _int(j['sectionId']),
+    sectionName: j['sectionName'] as String? ?? '',
+    staffId: j['staffId'] == null ? null : _int(j['staffId']),
+    teacherName: j['teacherName'] as String?,
+  );
+}
+
+/// One row of the grid: a subject, with a cell per section.
+class AssignmentRow {
+  const AssignmentRow({
+    required this.subjectId,
+    required this.subjectName,
+    required this.sections,
+  });
+
+  final int subjectId;
+  final String subjectName;
+  final List<AssignmentCell> sections;
+
+  int get assigned =>
+      sections.where((AssignmentCell c) => c.staffId != null).length;
+
+  factory AssignmentRow.fromJson(Map<String, dynamic> j) => AssignmentRow(
+    subjectId: _int(j['subjectId']),
+    subjectName: j['subjectName'] as String? ?? '',
+    sections: ((j['sections'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(AssignmentCell.fromJson)
+        .toList(),
+  );
+}
+
+/// Everything the Subjects & Teachers screen needs for one class.
+class ClassCurriculum {
+  const ClassCurriculum({
+    required this.classId,
+    required this.className,
+    required this.academicYear,
+    required this.subjects,
+    required this.grid,
+  });
+
+  final int classId;
+  final String className;
+  final String? academicYear;
+  final List<ClassSubjectOption> subjects;
+
+  /// One row per subject the class studies. Empty until subjects are picked.
+  final List<AssignmentRow> grid;
+
+  factory ClassCurriculum.fromJson(Map<String, dynamic> j) => ClassCurriculum(
+    classId: _int(j['classId']),
+    className: j['className'] as String? ?? '',
+    academicYear: j['academicYear'] as String?,
+    subjects: ((j['subjects'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(ClassSubjectOption.fromJson)
+        .toList(),
+    grid: ((j['grid'] as List<dynamic>?) ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(AssignmentRow.fromJson)
+        .toList(),
+  );
+}
+
+/* ----------------------------------------------- teacher: roster + work -- */
+
+/// One student on a class roster.
+class RosterStudent {
+  const RosterStudent({
+    required this.id,
+    required this.rollNo,
+    required this.name,
+  });
+
+  final int id;
+  final String? rollNo;
+  final String name;
+
+  factory RosterStudent.fromJson(Map<String, dynamic> j) => RosterStudent(
+    id: _int(j['id']),
+    rollNo: j['rollNo'] as String?,
+    name: j['name'] as String? ?? '',
+  );
+}
+
+/// How much of one paper has been marked, for one section.
+///
+/// The count is what tells a teacher where to go next: a paper at 12 of 30 is
+/// the one still owed, and a total that never reaches the roster size is a
+/// paper somebody has forgotten.
+class MarksProgress {
+  const MarksProgress({
+    required this.subject,
+    required this.fullMarks,
+    required this.examDate,
+    required this.entered,
+    required this.total,
+  });
+
+  final String subject;
+  final int fullMarks;
+  final DateTime? examDate;
+  final int entered;
+  final int total;
+
+  bool get isComplete => total > 0 && entered >= total;
+
+  factory MarksProgress.fromJson(Map<String, dynamic> j) => MarksProgress(
+    subject: j['subject'] as String? ?? '',
+    fullMarks: _int(j['fullMarks']),
+    examDate: _date(j['examDate']),
+    entered: _int(j['entered']),
+    total: _int(j['total']),
   );
 }

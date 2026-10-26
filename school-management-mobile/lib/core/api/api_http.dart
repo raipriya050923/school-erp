@@ -121,6 +121,40 @@ abstract class ApiHttp {
     decodeAny(response, allowEmpty: true);
   }
 
+  /// POST under [base] whose response body matters — an auto-fill run reports
+  /// what it filled, a reset reports what it cleared. [post] throws that away.
+  Future<Object> postAny(String path, Map<String, dynamic> body) async {
+    late final http.Response response;
+    try {
+      response = await http
+          .post(_uri(path), headers: headers(), body: jsonEncode(body))
+          .timeout(timeout);
+    } on SocketException {
+      throw ApiException('Cannot reach the server at ${ApiConfig.baseUrl}.');
+    } on TimeoutException {
+      throw const ApiException('The server took too long to respond.');
+    }
+    return decodeAny(response);
+  }
+
+  /// DELETE under [base]. Answers 204, so nothing is decoded.
+  ///
+  /// The API refuses a delete that would take history with it — a class with
+  /// students in it, a year that has been invoiced against — and says so in the
+  /// body, which [decodeAny] turns into the message the screen shows.
+  Future<void> delete(String path) async {
+    late final http.Response response;
+    try {
+      response =
+          await http.delete(_uri(path), headers: headers()).timeout(timeout);
+    } on SocketException {
+      throw ApiException('Cannot reach the server at ${ApiConfig.baseUrl}.');
+    } on TimeoutException {
+      throw const ApiException('The server took too long to respond.');
+    }
+    decodeAny(response, allowEmpty: true);
+  }
+
   /// POST to a full URL rather than one under [base] — used for `/auth/*`,
   /// which belongs to no single role.
   Future<Object> postJson(String url, Map<String, dynamic> body) =>

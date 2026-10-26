@@ -51,13 +51,29 @@ void main() {
   testWidgets('teacher dashboard shows its figures once loaded', (
     WidgetTester tester,
   ) async {
-    TeacherStore.instance.dashboard = const Loadable<TeacherDashboard>.data(
+    TeacherStore.instance.dashboard = Loadable<TeacherDashboard>.data(
       TeacherDashboard(
-        profile: TeacherProfile(name: 'Rajesh Koirala'),
+        profile: const TeacherProfile(
+          name: 'Rajesh Koirala',
+          employeeCode: 'EMP-008',
+          subject: 'Science',
+        ),
         myClassesCount: 4,
         studentsTaught: 542,
         submissionsToGrade: 66,
         openHomework: 1,
+        recentHomework: <TeacherHomework>[
+          TeacherHomework(
+            id: 7,
+            title: 'Photosynthesis worksheet',
+            subject: 'Science',
+            classLabel: 'Grade 6 - A',
+            dueDate: DateTime(2026, 11, 14),
+            submitted: 18,
+            total: 30,
+            status: 'open',
+          ),
+        ],
       ),
     );
     addTearDown(TeacherStore.instance.reset);
@@ -68,10 +84,86 @@ void main() {
     expect(find.text('542'), findsOneWidget);
   });
 
+  testWidgets('teacher dashboard lists the homework needing attention', (
+    WidgetTester tester,
+  ) async {
+    // The counters say how much is waiting; this list says which assignments.
+    // The API has always sent them - the mobile model used to drop the field,
+    // so the section rendered nowhere and the suite never noticed.
+    TeacherStore.instance.dashboard = Loadable<TeacherDashboard>.data(
+      TeacherDashboard(
+        profile: const TeacherProfile(
+          name: 'Sunita Gurung',
+          employeeCode: 'EMP-008',
+          subject: 'English',
+        ),
+        myClassesCount: 2,
+        studentsTaught: 64,
+        submissionsToGrade: 12,
+        openHomework: 2,
+        recentHomework: <TeacherHomework>[
+          TeacherHomework(
+            id: 1,
+            title: 'Essay on monsoon',
+            subject: 'English',
+            classLabel: 'Grade 6 - A',
+            dueDate: DateTime(2026, 11, 14),
+            submitted: 18,
+            total: 30,
+            status: 'open',
+          ),
+          TeacherHomework(
+            id: 2,
+            title: 'Poem recital notes',
+            subject: 'English',
+            classLabel: 'Grade 7 - B',
+            dueDate: DateTime(2026, 11, 2),
+            submitted: 29,
+            total: 29,
+            status: 'grading',
+          ),
+        ],
+      ),
+    );
+    addTearDown(TeacherStore.instance.reset);
+
+    await pump(tester, const TeacherHomeScreen());
+
+    expect(find.text('Homework needing attention'), findsOneWidget);
+    expect(find.text('Essay on monsoon'), findsOneWidget);
+    expect(find.text('Poem recital notes'), findsOneWidget);
+    // Handed in out of set, as the web table's Submitted column shows it.
+    expect(find.text('18/30'), findsOneWidget);
+    expect(find.text('29/29'), findsOneWidget);
+    // Class, subject and due date on one line.
+    expect(find.textContaining('Grade 6 - A'), findsOneWidget);
+    expect(find.textContaining('Due 14 Nov'), findsOneWidget);
+  });
+
+  testWidgets('teacher dashboard says so when there is no homework', (
+    WidgetTester tester,
+  ) async {
+    TeacherStore.instance.dashboard = const Loadable<TeacherDashboard>.data(
+      TeacherDashboard(
+        profile: TeacherProfile(name: 'Kamala Tamang'),
+        myClassesCount: 1,
+        studentsTaught: 30,
+        submissionsToGrade: 0,
+        openHomework: 0,
+        recentHomework: <TeacherHomework>[],
+      ),
+    );
+    addTearDown(TeacherStore.instance.reset);
+
+    await pump(tester, const TeacherHomeScreen());
+
+    expect(find.text('No homework yet'), findsOneWidget);
+  });
+
   testWidgets('admin dashboard shows its figures once loaded', (
     WidgetTester tester,
   ) async {
-    AdminStore.instance.dashboard = const Loadable<AdminDashboard>.data(
+    AdminStore.instance.dashboard = Loadable<AdminDashboard>.data(
       AdminDashboard(
         schoolName: 'Sunrise Public School',
         academicYear: '2026-27',
@@ -83,7 +175,41 @@ void main() {
         feesBilled: 16134500,
         feesCollected: 119000,
         feesOverdue: 16015500,
+        feesDue: 16015500,
         unpaidInvoices: 1247,
+        attendanceToday: 91.5,
+        attendanceTrend: <AttendancePoint>[
+          AttendancePoint(
+            date: DateTime(2026, 6, 1),
+            percent: 94,
+            present: 1170,
+            total: 1245,
+          ),
+          AttendancePoint(
+            date: DateTime(2026, 6, 2),
+            percent: 61,
+            present: 760,
+            total: 1245,
+          ),
+        ],
+        recentAdmissions: <RecentAdmission>[
+          RecentAdmission(
+            name: 'Sunil Rai',
+            className: 'Grade 6',
+            sectionName: 'A',
+            admissionDate: DateTime(2026, 10, 25),
+          ),
+        ],
+        latestNotices: <SchoolNotice>[
+          SchoolNotice(
+            id: 1,
+            title: 'Parent-teacher meeting',
+            body: 'Saturday at 10am in the main hall.',
+            audience: 'parents',
+            publishDate: DateTime(2026, 10, 20),
+            createdBy: 11,
+          ),
+        ],
       ),
     );
     addTearDown(AdminStore.instance.reset);
@@ -92,7 +218,15 @@ void main() {
 
     expect(find.text('Students'), findsOneWidget);
     expect(find.text('1248'), findsOneWidget);
-    expect(find.text('Collected'), findsOneWidget);
+    // The sections the web dashboard has and mobile used to drop.
+    expect(find.text('Attendance overview'), findsOneWidget);
+    expect(find.text('Recent admissions'), findsOneWidget);
+    expect(find.text('Sunil Rai'), findsOneWidget);
+    expect(find.text('Latest notices'), findsOneWidget);
+    expect(find.text('Parent-teacher meeting'), findsOneWidget);
+    expect(find.text('Fees collection'), findsOneWidget);
+    // Twice now, and deliberately: the Fees tile and the split-bar legend.
+    expect(find.text('Collected'), findsNWidgets(2));
   });
 
   // The list screens share the same blind spot: the render suite only ever
@@ -212,6 +346,118 @@ void main() {
     });
   }
 
+  testWidgets('the fees split bar actually has height', (
+    WidgetTester tester,
+  ) async {
+    // A ColoredBox has no height of its own, so a Row that centres its children
+    // gives each segment zero height: correct colours, correct widths, and
+    // nothing on screen. Only a size assertion catches that - the widgets are
+    // all present and findable either way.
+    AdminStore.instance.dashboard = Loadable<AdminDashboard>.data(
+      AdminDashboard(
+        schoolName: 'Sunrise Public School',
+        academicYear: '2026-27',
+        totalStudents: 1249,
+        totalTeachers: 12,
+        teachersOnLeave: 1,
+        totalClasses: 5,
+        totalSections: 10,
+        feesBilled: 34341000,
+        feesCollected: 140000,
+        feesOverdue: 16015500,
+        feesDue: 34201000,
+        unpaidInvoices: 2716,
+        attendanceToday: null,
+        attendanceTrend: const <AttendancePoint>[],
+        recentAdmissions: const <RecentAdmission>[],
+        latestNotices: const <SchoolNotice>[],
+      ),
+    );
+    addTearDown(AdminStore.instance.reset);
+
+    await pump(tester, const AdminHomeScreen());
+
+    final List<Size> segments = find
+        .byType(ColoredBox)
+        .evaluate()
+        .map((Element e) => e.size!)
+        .where((Size s) => s.width < 380) // excludes the page background
+        .toList();
+
+    expect(segments, hasLength(3), reason: 'collected, pending and overdue');
+    for (final Size s in segments) {
+      expect(s.height, greaterThan(0), reason: 'a zero-height bar draws nothing');
+      expect(s.width, greaterThan(0));
+    }
+  });
+
+  testWidgets('the attendance columns actually have size', (
+    WidgetTester tester,
+  ) async {
+    // The same trap as the fees bar, from the other direction: the column's
+    // child has no width of its own, so without a widthFactor every bar is
+    // zero-wide and the chart is an empty box with date labels under it.
+    AdminStore.instance.dashboard = Loadable<AdminDashboard>.data(
+      AdminDashboard(
+        schoolName: 'Sunrise Public School',
+        academicYear: '2026-27',
+        totalStudents: 1249,
+        totalTeachers: 12,
+        teachersOnLeave: 1,
+        totalClasses: 5,
+        totalSections: 10,
+        feesBilled: 100,
+        feesCollected: 50,
+        feesOverdue: 25,
+        feesDue: 50,
+        unpaidInvoices: 1,
+        attendanceToday: 91.5,
+        attendanceTrend: <AttendancePoint>[
+          AttendancePoint(
+            date: DateTime(2026, 6, 1),
+            percent: 94,
+            present: 1170,
+            total: 1245,
+          ),
+          AttendancePoint(
+            date: DateTime(2026, 6, 2),
+            percent: 12,
+            present: 150,
+            total: 1245,
+          ),
+          // A day marked with nobody present: still a visible stub, so it reads
+          // as a terrible day rather than as a day nobody marked.
+          AttendancePoint(
+            date: DateTime(2026, 6, 3),
+            percent: 0,
+            present: 0,
+            total: 1245,
+          ),
+        ],
+        recentAdmissions: const <RecentAdmission>[],
+        latestNotices: const <SchoolNotice>[],
+      ),
+    );
+    addTearDown(AdminStore.instance.reset);
+
+    await pump(tester, const AdminHomeScreen());
+
+    final List<Size> bars = find
+        .byType(FractionallySizedBox)
+        .evaluate()
+        .map((Element e) => e.size!)
+        .toList();
+
+    expect(bars, hasLength(3));
+    for (final Size s in bars) {
+      expect(s.width, greaterThan(0), reason: 'a zero-width column draws nothing');
+      expect(s.height, greaterThan(0));
+    }
+    // Taller day is taller on screen, and the 0% day still shows something.
+    expect(bars[0].height, greaterThan(bars[1].height));
+    expect(bars[2].height, greaterThan(0));
+  });
+
   /* ---- subscription notices on the admin dashboard ---- */
 
   AdminDashboard dashWith(SubscriptionStatus? sub) => AdminDashboard(
@@ -225,7 +471,12 @@ void main() {
     feesBilled: 100,
     feesCollected: 50,
     feesOverdue: 50,
+    feesDue: 50,
     unpaidInvoices: 3,
+    attendanceToday: null,
+    attendanceTrend: const <AttendancePoint>[],
+    recentAdmissions: const <RecentAdmission>[],
+    latestNotices: const <SchoolNotice>[],
     subscription: sub,
   );
 

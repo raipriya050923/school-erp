@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api/api_http.dart';
 import '../../core/loadable.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -284,7 +285,10 @@ class _Notice extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   body,
-                  style: theme.textTheme.bodySmall?.copyWith(color: ink, height: 1.45),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: ink,
+                    height: 1.45,
+                  ),
                 ),
               ],
             ),
@@ -406,7 +410,9 @@ class StaffPage extends StatelessWidget {
                 // Against the brand bar, not the page: the body's grey would
                 // all but disappear on it.
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.appBarTheme.foregroundColor?.withValues(alpha: 0.78),
+                  color: theme.appBarTheme.foregroundColor?.withValues(
+                    alpha: 0.78,
+                  ),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -541,10 +547,7 @@ class StaffRow extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: <Widget>[
                           if (trailing != null)
-                            Text(
-                              trailing!,
-                              style: theme.textTheme.titleSmall,
-                            ),
+                            Text(trailing!, style: theme.textTheme.titleSmall),
                           if (s != null) ...<Widget>[
                             if (trailing != null) const SizedBox(height: 4),
                             StatusChip(s),
@@ -573,7 +576,6 @@ class StaffRow extends StatelessWidget {
     );
   }
 }
-
 
 /// One line of a register: a name, and the statuses as a segmented control.
 ///
@@ -607,22 +609,22 @@ class AttendanceStatusRow extends StatelessWidget {
   /// present / absent / late / leave — a student register.
   static const Map<String, (String, Color)> studentStates =
       <String, (String, Color)>{
-    'present': ('P', AppColors.green),
-    'absent': ('A', AppColors.red),
-    'late': ('L', AppColors.amber),
-    'leave': ('E', AppColors.indigo),
-  };
+        'present': ('P', AppColors.green),
+        'absent': ('A', AppColors.red),
+        'late': ('L', AppColors.amber),
+        'leave': ('E', AppColors.indigo),
+      };
 
   /// The staff register adds a half day, and distinguishes approved leave from
   /// simply not turning up.
   static const Map<String, (String, Color)> staffStates =
       <String, (String, Color)>{
-    'present': ('P', AppColors.green),
-    'absent': ('A', AppColors.red),
-    'late': ('L', AppColors.amber),
-    'half_day': ('H', AppColors.blue),
-    'on_leave': ('E', AppColors.indigo),
-  };
+        'present': ('P', AppColors.green),
+        'absent': ('A', AppColors.red),
+        'late': ('L', AppColors.amber),
+        'half_day': ('H', AppColors.blue),
+        'on_leave': ('E', AppColors.indigo),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -705,24 +707,30 @@ class _StatusChip extends StatelessWidget {
 ///
 /// A plain Center cannot: RefreshIndicator needs a scrollable child, and the
 /// empty state is exactly when someone wants to pull for a new one.
-Widget centredMessage(BuildContext context, String text, {VoidCallback? onRetry}) =>
-    ListView(
-      padding: const EdgeInsets.all(AppSpacing.xxl),
-      children: <Widget>[
-        const SizedBox(height: AppSpacing.xxl),
-        Text(
-          text,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium,
+Widget centredMessage(
+  BuildContext context,
+  String text, {
+  VoidCallback? onRetry,
+}) => ListView(
+  padding: const EdgeInsets.all(AppSpacing.xxl),
+  children: <Widget>[
+    const SizedBox(height: AppSpacing.xxl),
+    Text(
+      text,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.bodyMedium,
+    ),
+    if (onRetry != null) ...<Widget>[
+      const SizedBox(height: AppSpacing.lg),
+      Center(
+        child: OutlinedButton(
+          onPressed: onRetry,
+          child: const Text('Try again'),
         ),
-        if (onRetry != null) ...<Widget>[
-          const SizedBox(height: AppSpacing.lg),
-          Center(
-            child: OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
-          ),
-        ],
-      ],
-    );
+      ),
+    ],
+  ],
+);
 
 /// A heading over a group of [detailRow]s.
 Widget sectionTitle(BuildContext context, String title) => Padding(
@@ -739,7 +747,10 @@ Widget detailRow(BuildContext context, String label, String value) {
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        SizedBox(width: 108, child: Text(label, style: theme.textTheme.bodySmall)),
+        SizedBox(
+          width: 108,
+          child: Text(label, style: theme.textTheme.bodySmall),
+        ),
         Expanded(
           child: Text(
             value.trim().isEmpty ? '—' : value,
@@ -755,8 +766,18 @@ String titleCase(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
 
 const List<String> kMonths = <String>[
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 /// "9 Oct 2026" — for a date that could be any year.
@@ -764,3 +785,184 @@ String formatDay(DateTime d) => '${d.day} ${kMonths[d.month - 1]} ${d.year}';
 
 /// "9 Oct" — for a date within the current cycle, where the year is noise.
 String formatShortDay(DateTime d) => '${d.day} ${kMonths[d.month - 1]}';
+
+/* ------------------------------------------------- the config masters -- */
+
+/// The body every master list wears: spinner, retryable error, empty state, or
+/// the rows. [StaffSection] does this for a [Loadable]; these screens hold
+/// their own state because they write as well as read, and a write has to be
+/// able to reload without going through a store.
+class MasterBody extends StatelessWidget {
+  const MasterBody({
+    super.key,
+    required this.loading,
+    required this.error,
+    required this.onRetry,
+    required this.isEmpty,
+    required this.empty,
+    required this.children,
+  });
+
+  final bool loading;
+  final String? error;
+  final VoidCallback onRetry;
+  final bool isEmpty;
+  final Widget empty;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    if (loading) return const Center(child: CircularProgressIndicator());
+
+    if (error != null) {
+      // A ListView rather than a Column, so pull-to-refresh still works on the
+      // screen you most want to retry from.
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        children: <Widget>[
+          Text(
+            error!,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Center(
+            child: OutlinedButton(
+              onPressed: onRetry,
+              child: const Text('Try again'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (isEmpty) {
+      return ListView(children: <Widget>[const SizedBox(height: 80), empty]);
+    }
+
+    return ListView(
+      // Bottom padding clears the floating action button, which otherwise sits
+      // on top of the last row.
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        96,
+      ),
+      children: children,
+    );
+  }
+}
+
+/// The shell a master's edit sheet wears: title, fields, Cancel and Save.
+class SheetFrame extends StatelessWidget {
+  const SheetFrame({
+    super.key,
+    required this.title,
+    required this.onSave,
+    required this.children,
+    this.saveLabel = 'Save',
+  });
+
+  final String title;
+  final VoidCallback onSave;
+  final List<Widget> children;
+  final String saveLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(title, style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.lg),
+            ...children,
+            const SizedBox(height: AppSpacing.xl),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onSave,
+                    child: Text(saveLabel),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Runs a write, says what happened, and reloads.
+///
+/// The API refuses the destructive ones it should — a class with students in
+/// it, a year already invoiced against — and its wording explains why better
+/// than anything a screen could invent, so the message is shown as it came.
+Future<void> runAndReload(
+  BuildContext context,
+  Future<void> Function() action,
+  String done,
+  Future<void> Function() reload,
+) async {
+  final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+  final Color errorColour = Theme.of(context).colorScheme.error;
+  try {
+    await action();
+    messenger.showSnackBar(SnackBar(content: Text(done)));
+    await reload();
+  } on ApiException catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text(e.message), backgroundColor: errorColour),
+    );
+  }
+}
+
+/// A yes/no before something that cannot be undone, or that changes what every
+/// other screen files its work under.
+Future<bool> confirmAction(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String confirmLabel = 'Delete',
+  bool destructive = true,
+}) async {
+  final bool? ok = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext d) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(d).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(d).pop(true),
+          style: destructive
+              ? TextButton.styleFrom(
+                  foregroundColor: Theme.of(d).colorScheme.error,
+                )
+              : null,
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
+  return ok ?? false;
+}

@@ -16,12 +16,15 @@ class Format {
     return negative ? '-$out' : out.toString();
   }
 
-  /// The school's currency symbol. Every school in the system is on NPR, and
-  /// this used to be a dollar sign carried over from the demo data — a fee of
-  /// Rs 12,000 was being shown to parents as $12,000.
-  static const String currencySymbol = 'Rs ';
+  /// The school's currency symbol, matching what the web portal prints so a
+  /// figure read on a phone and the same figure read on a desktop cannot look
+  /// like different money.
+  ///
+  /// No trailing space: the glyph sits tight against the number, which is how
+  /// the sign is set.
+  static const String currencySymbol = '₹';
 
-  /// `6650` -> `Rs 6,650`
+  /// `6650` -> `₹6,650`
   static String money(num value) => '$currencySymbol${thousands(value)}';
 
   /// `87.4` -> `87.4%`, `88.0` -> `88%`

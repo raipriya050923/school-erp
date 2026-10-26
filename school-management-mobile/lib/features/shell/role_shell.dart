@@ -10,6 +10,11 @@ import '../staff/admin_attendance_screen.dart';
 import '../staff/admin_exams_screen.dart';
 import '../staff/admin_leave_screen.dart';
 import '../staff/admin_notices_screen.dart';
+import '../staff/admin_classes_screen.dart';
+import '../staff/admin_fee_structure_screen.dart';
+import '../staff/admin_timetable_screen.dart';
+import '../staff/admin_transport_screen.dart';
+import '../staff/admin_masters_screens.dart';
 import '../staff/admin_screens.dart';
 import '../staff/my_profile_screen.dart';
 import '../staff/admin_staff_attendance_screen.dart';
@@ -21,6 +26,7 @@ import 'more_screen.dart';
 import '../staff/teacher_attendance_screen.dart';
 import '../staff/teacher_marks_screen.dart';
 import '../staff/teacher_results_screen.dart';
+import '../staff/teacher_homework_screen.dart';
 import '../staff/teacher_screens.dart';
 import '../auth/set_password_screen.dart';
 import 'app_shell.dart';
@@ -96,6 +102,8 @@ const List<_Tab> _teacherTabs = <_Tab>[
   _Tab('More', Icons.more_horiz_outlined, Icons.more_horiz, MoreScreen(
     title: 'More',
     entries: <MoreEntry>[
+      MoreEntry('Homework', Icons.assignment_outlined, _buildTeacherHomework,
+          subtitle: 'What you have set, and setting more'),
       MoreEntry('Class results', Icons.workspace_premium_outlined,
           _buildTeacherResults,
           subtitle: 'Review your section and sign it off'),
@@ -110,6 +118,8 @@ const List<_Tab> _teacherTabs = <_Tab>[
   )),
 ];
 
+Widget _buildTeacherHomework(BuildContext _) =>
+    const TeacherHomeworkScreen();
 Widget _buildTeacherResults(BuildContext _) => const TeacherResultsScreen();
 Widget _buildTeacherTimetable(BuildContext _) => const TeacherTimetableScreen();
 Widget _buildTeacherLeave(BuildContext _) => const TeacherLeaveScreen();
@@ -129,6 +139,22 @@ const List<_Tab> _adminTabs = <_Tab>[
   _Tab('More', Icons.more_horiz_outlined, Icons.more_horiz, MoreScreen(
     title: 'More',
     entries: <MoreEntry>[
+      MoreEntry('Classes & sections', Icons.meeting_room_outlined,
+          _buildAdminClasses,
+          subtitle: 'The classes this school runs, and their sections'),
+      MoreEntry('Subjects', Icons.menu_book_outlined, _buildAdminSubjects,
+          subtitle: 'What can be timetabled and marked'),
+      MoreEntry('Academic years', Icons.event_outlined, _buildAdminYears,
+          subtitle: 'Which year new work is filed under'),
+      MoreEntry('Timetable', Icons.calendar_view_week_outlined,
+          _buildAdminTimetable,
+          subtitle: 'The week, period by period'),
+      MoreEntry('Fee structure', Icons.payments_outlined,
+          _buildAdminFeeStructure,
+          subtitle: 'What each class is charged'),
+      MoreEntry('Transport fee', Icons.directions_bus_outlined,
+          _buildAdminTransport,
+          subtitle: 'Distance bands, and who rides'),
       MoreEntry('Class attendance', Icons.fact_check_outlined,
           _buildAdminAttendance,
           subtitle: 'Take or correct any section\'s register'),
@@ -150,6 +176,13 @@ const List<_Tab> _adminTabs = <_Tab>[
   )),
 ];
 
+Widget _buildAdminClasses(BuildContext _) => const AdminClassesScreen();
+Widget _buildAdminTimetable(BuildContext _) => const AdminTimetableScreen();
+Widget _buildAdminFeeStructure(BuildContext _) =>
+    const AdminFeeStructureScreen();
+Widget _buildAdminTransport(BuildContext _) => const AdminTransportScreen();
+Widget _buildAdminSubjects(BuildContext _) => const AdminSubjectsScreen();
+Widget _buildAdminYears(BuildContext _) => const AdminAcademicYearsScreen();
 Widget _buildAdminAttendance(BuildContext _) => const AdminAttendanceScreen();
 Widget _buildAdminStaffAttendance(BuildContext _) =>
     const AdminStaffAttendanceScreen();

@@ -25,7 +25,10 @@
       "Bash(cd \"d:/projects/school-erp/SchoolErp.Api/src/SchoolErp.Api\" && sed -n '1,6p' appsettings.json; ls \"/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe\" 2>/dev/null)",
       "Read(//c/Program Files/MySQL/MySQL Server 8.0/bin/**)",
       "Bash('/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe' -h 127.0.0.1 -P 3306 -uroot -p54321 school_erp -N -e 'SELECT table_name FROM information_schema.tables WHERE table_schema='\\\\''school_erp'\\\\'' AND table_name LIKE '\\\\''%migration%'\\\\'' OR table_name LIKE '\\\\''%schema_version%'\\\\'';')",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(grep -rn \"_date\\\\|formatDate\\\\|\\\\.day}/\\\\|monthNames\\\\|_months\" lib --include=*.dart)",
+      "Bash(python -I \"C:/Users/pc/AppData/Local/Temp/claude/d--projects-school-erp/01fd07fe-9724-4b9a-b1f7-2f7b70221edc/scratchpad/sync_teacher_dash.py\")",
+      "Bash(flutter analyze *)"
     ]
   }
 }

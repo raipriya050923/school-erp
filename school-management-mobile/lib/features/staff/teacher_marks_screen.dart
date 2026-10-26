@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api/api_http.dart';
 import '../../core/api/staff_api.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/staff_models.dart';
 import 'staff_widgets.dart';
@@ -34,6 +35,10 @@ class _TeacherMarksScreenState extends State<TeacherMarksScreen> {
   String? _subject;
 
   MarksGrid? _grid;
+  /// How far each paper of this exam has been marked for this section. Loaded
+  /// beside the grid, because the grid shows one subject and this says which
+  /// of the others still owe marks.
+  List<MarksProgress> _progress = const <MarksProgress>[];
   bool _loadingGrid = false;
   bool _saving = false;
   String? _error;
@@ -91,9 +96,17 @@ class _TeacherMarksScreenState extends State<TeacherMarksScreen> {
         className: section.className,
         sectionName: section.sectionName,
       );
+      // Fetched together so the summary and the grid can never disagree about
+      // how much is entered.
+      final List<MarksProgress> progress = await _api.marksProgress(
+        examId: exam.id,
+        className: section.className,
+        sectionName: section.sectionName,
+      );
       if (!mounted) return;
       setState(() {
         _grid = grid;
+        _progress = progress;
         _loadingGrid = false;
         _dirty = false;
         _seedFields(grid);
@@ -103,6 +116,7 @@ class _TeacherMarksScreenState extends State<TeacherMarksScreen> {
       setState(() {
         _loadingGrid = false;
         _grid = null;
+        _progress = const <MarksProgress>[];
         _error = e.message;
       });
     }
@@ -352,12 +366,32 @@ class _TeacherMarksScreenState extends State<TeacherMarksScreen> {
       separatorBuilder: (BuildContext _, int index) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (BuildContext context, int i) {
         if (i == 0) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-            child: Text(
-              '$_subject · out of $_fullMarks · ${grid.students.length} students',
-              style: theme.textTheme.bodySmall,
-            ),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                child: Text(
+                  '$_subject · out of $_fullMarks · ${grid.students.length} students',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              if (_progress.isNotEmpty) ...<Widget>[
+                const SizedBox(height: AppSpacing.xs),
+                // Every paper of this exam, and how far each is marked. The
+                // grid below only edits one subject; this is what says which
+                // of the others still owe marks, and whose.
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.xs,
+                  children: <Widget>[
+                    for (final MarksProgress mp in _progress)
+                      _PaperChip(progress: mp, current: mp.subject == _subject),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
+            ],
           );
         }
         final MarksStudent s = grid.students[i - 1];
@@ -414,4 +448,48 @@ class _TeacherMarksScreenState extends State<TeacherMarksScreen> {
       ),
     ),
   );
+}
+
+/// One paper's marking progress: "Science 18/30".
+///
+/// Complete papers are stated rather than coloured in, and an incomplete one
+/// carries the count that says how much is left. The subject currently open in
+/// the grid is marked, so the chips read as context rather than as a menu.
+class _PaperChip extends StatelessWidget {
+  const _PaperChip({required this.progress, required this.current});
+
+  final MarksProgress progress;
+  final bool current;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final bool done = progress.isComplete;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: current
+            ? theme.colorScheme.primaryContainer
+            : theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (done)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Icon(Icons.check, size: 13, color: AppColors.green),
+            ),
+          Text(
+            '${progress.subject} ${progress.entered}/${progress.total}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: current ? FontWeight.w600 : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

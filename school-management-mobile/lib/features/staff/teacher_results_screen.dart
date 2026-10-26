@@ -5,6 +5,7 @@ import '../../core/api/staff_api.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/staff_models.dart';
+import 'class_result_csv.dart';
 import 'staff_widgets.dart';
 
 /// A class teacher's review of their section's result sheet, and the sign-off.
@@ -156,12 +157,39 @@ class _TeacherResultsScreenState extends State<TeacherResultsScreen> {
     return value;
   }
 
+  /// Writes the sheet as CSV and hands it to the system share sheet.
+  Future<void> _exportCsv() async {
+    final ClassResult? r = _result;
+    if (r == null) return;
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final Color errorColour = Theme.of(context).colorScheme.error;
+    try {
+      await ClassResultCsv.share(r);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not prepare the file. $e'),
+          backgroundColor: errorColour,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Class results'),
-        actions: const <Widget>[SignOutAction()],
+        actions: <Widget>[
+          // Disabled rather than hidden while there is nothing to export, so
+          // the button does not appear and vanish as sections are switched.
+          IconButton(
+            onPressed: (_result?.students.isEmpty ?? true) ? null : _exportCsv,
+            icon: const Icon(Icons.ios_share_outlined),
+            tooltip: 'Export CSV',
+          ),
+          const SignOutAction(),
+        ],
       ),
       body: SafeArea(
         top: false,

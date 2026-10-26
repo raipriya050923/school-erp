@@ -4,6 +4,7 @@ import '../../core/api/api_http.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../data/api_models.dart';
+import 'receipt_pdf.dart';
 
 /// Shows the receipt for one payment.
 ///
@@ -11,10 +12,11 @@ import '../../data/api_models.dart';
 /// receipt number — if the office and the family end up quoting different
 /// numbers for one payment, the receipt has failed at its only job.
 ///
-/// There is deliberately no Print button. The app takes no printing package,
-/// and a phone has nowhere obvious to print to; what it offers instead is a
-/// receipt laid out to be read and screenshotted, which is what families do
-/// with it. A real print or PDF export would mean adopting `printing`.
+/// Download hands the same document to the system sheet as a PDF, which is
+/// where a phone keeps "save to Downloads", "send" and "print" — the three
+/// things the web's print dialog offers, under one button. A screenshot was
+/// what families resorted to before; a receipt forwarded to an employer or an
+/// auditor needs to be a document, not a picture of a phone.
 class ReceiptSheet extends StatelessWidget {
   const ReceiptSheet({super.key, required this.receipt});
 
@@ -120,12 +122,23 @@ class ReceiptSheet extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Close'),
-                    ),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Close'),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () => _download(context, r),
+                          icon: const Icon(Icons.download_outlined, size: 18),
+                          label: const Text('Download'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -321,6 +334,26 @@ class ReceiptSheet extends StatelessWidget {
         Expanded(child: Text(label, style: style)),
         Text(value, style: style),
       ],
+    );
+  }
+}
+
+/// Builds the PDF and hands it to the system sheet.
+///
+/// Building can take a moment on an older phone — the fonts are fetched and
+/// cached on first use — so the button reports rather than appearing to do
+/// nothing, and a failure says so instead of silently closing.
+Future<void> _download(BuildContext context, FeeReceipt r) async {
+  final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+  final Color errorColour = Theme.of(context).colorScheme.error;
+  try {
+    await ReceiptPdf.share(r);
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Could not prepare the receipt. $e'),
+        backgroundColor: errorColour,
+      ),
     );
   }
 }

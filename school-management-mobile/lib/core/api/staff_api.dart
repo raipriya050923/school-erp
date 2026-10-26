@@ -20,6 +20,46 @@ class TeacherApi extends ApiHttp {
 
   /// Same payload shape as the student timetable — periods, working days and
   /// slots — so it reuses that model rather than duplicating it.
+  /// The students of one section this teacher takes.
+  Future<List<RosterStudent>> roster({
+    required String className,
+    required String sectionName,
+  }) async =>
+      (await getList(
+        'classes/roster?className=${Uri.encodeQueryComponent(className)}'
+        '&sectionName=${Uri.encodeQueryComponent(sectionName)}',
+      )).map(RosterStudent.fromJson).toList();
+
+  /// How far each paper of an exam has been marked for one section.
+  Future<List<MarksProgress>> marksProgress({
+    required int examId,
+    required String className,
+    required String sectionName,
+  }) async =>
+      (await getList(
+        'marks/progress?examId=$examId'
+        '&className=${Uri.encodeQueryComponent(className)}'
+        '&sectionName=${Uri.encodeQueryComponent(sectionName)}',
+      )).map(MarksProgress.fromJson).toList();
+
+  /// Everything this teacher has set, newest first.
+  Future<List<TeacherHomework>> homework() async =>
+      (await getList('homework')).map(TeacherHomework.fromJson).toList();
+
+  Future<void> createHomework({
+    required String title,
+    String? subject,
+    String? classLabel,
+    DateTime? dueDate,
+    required int totalCount,
+  }) => post('homework', <String, dynamic>{
+    'title': title,
+    'subject': subject,
+    'classLabel': classLabel,
+    'dueDate': dueDate?.toIso8601String(),
+    'totalCount': totalCount,
+  });
+
   Future<StudentTimetable> timetable() async =>
       StudentTimetable.fromJson(await getObject('timetable'));
 
@@ -173,7 +213,7 @@ class AdminApi extends ApiHttp {
 
   /// Everything the edit form needs, which the list row does not carry.
   Future<StudentDetail> studentDetail(int id) async =>
-      StudentDetail.fromJson(await getObject('students/\$id'));
+      StudentDetail.fromJson(await getObject('students/$id'));
 
   Future<void> createStudent(Map<String, dynamic> body) =>
       post('students', body);
@@ -220,7 +260,7 @@ class AdminApi extends ApiHttp {
   }
 
   Future<TeacherDetail> teacherDetail(int id) async =>
-      TeacherDetail.fromJson(await getObject('teachers/\$id'));
+      TeacherDetail.fromJson(await getObject('teachers/$id'));
 
   Future<void> createTeacher(Map<String, dynamic> body) =>
       post('teachers', body);
@@ -245,6 +285,24 @@ class AdminApi extends ApiHttp {
 
   Future<List<AdminInvoice>> invoices() async =>
       (await getList('fees/invoices')).map(AdminInvoice.fromJson).toList();
+
+  /// Records money received against an invoice.
+  ///
+  /// The office takes payment in person and enters it here; the amount may be
+  /// less than the balance, because part payments are normal and the invoice
+  /// stays open until the rest arrives.
+  Future<void> recordPayment(
+    int invoiceId, {
+    required double amount,
+    required String method,
+    String? reference,
+    required DateTime paymentDate,
+  }) => post('fees/invoices/$invoiceId/payments', <String, dynamic>{
+    'amount': amount,
+    'method': method,
+    'ref': reference,
+    'paymentDate': paymentDate.toIso8601String(),
+  });
 
   /// Payments taken against one invoice, oldest first — one receipt each.
   Future<List<FeePayment>> invoicePayments(int invoiceId) async =>
@@ -279,6 +337,284 @@ class AdminApi extends ApiHttp {
   /// already holds it, or saving them would silently drop it.
   Future<List<SchoolSubject>> subjects() async =>
       (await getList('subjects')).map(SchoolSubject.fromJson).toList();
+
+  Future<void> createSubject({
+    required String name,
+    String? code,
+    required String subjectType,
+  }) => post('subjects', <String, dynamic>{
+    'name': name,
+    'code': code,
+    'subjectType': subjectType,
+  });
+
+  Future<void> updateSubject(
+    int id, {
+    required String name,
+    String? code,
+    required String subjectType,
+  }) => put('subjects/$id', <String, dynamic>{
+    'name': name,
+    'code': code,
+    'subjectType': subjectType,
+  });
+
+  /// Retired rather than deleted: a subject already timetabled or marked
+  /// against cannot vanish without taking that history with it.
+  Future<void> setSubjectActive(int id, bool isActive) =>
+      patch('subjects/$id/active', <String, dynamic>{'isActive': isActive});
+
+  /* ---------------- classes and sections ---------------- */
+
+  /// Creating a class can create its first section in the same call, because a
+  /// class with no sections holds no students and is of no use on its own.
+  Future<void> createClass({
+    required String name,
+    String? sectionName,
+    String? teacher,
+  }) => post('classes', <String, dynamic>{
+    'name': name,
+    'sectionName': sectionName,
+    'teacher': teacher,
+  });
+
+  Future<void> renameClass(int id, String name) =>
+      put('classes/$id', <String, dynamic>{'name': name});
+
+  Future<void> deleteClass(int id) => delete('classes/$id');
+
+  Future<void> createSection({
+    required int classId,
+    required String name,
+    String? teacher,
+  }) => post('classes/sections', <String, dynamic>{
+    'classId': classId,
+    'name': name,
+    'teacher': teacher,
+  });
+
+  Future<void> updateSection(
+    int id, {
+    required int classId,
+    required String name,
+    String? teacher,
+  }) => put('classes/sections/$id', <String, dynamic>{
+    'classId': classId,
+    'name': name,
+    'teacher': teacher,
+  });
+
+  Future<void> deleteSection(int id) => delete('classes/sections/$id');
+
+  /* ---------------- curriculum: subjects & teachers ---------------- */
+
+  Future<ClassCurriculum> curriculum(int classId) async =>
+      ClassCurriculum.fromJson(await getObject('curriculum/classes/$classId'));
+
+  /// Replaces the subjects this class studies. Dropping one takes its teacher
+  /// assignments with it, which is why the screen asks before saving a removal.
+  Future<void> setClassSubjects(int classId, List<int> subjectIds) =>
+      put('curriculum/classes/$classId/subjects', <String, dynamic>{
+        'subjectIds': subjectIds,
+      });
+
+  /// Sets, or with a null staffId clears, the teacher for one section/subject.
+  Future<void> assignSubjectTeacher({
+    required int classId,
+    required int sectionId,
+    required int subjectId,
+    int? staffId,
+  }) => put('curriculum/assignments', <String, dynamic>{
+    'classId': classId,
+    'sectionId': sectionId,
+    'subjectId': subjectId,
+    'staffId': staffId,
+  });
+
+  /* ---------------- timetable ---------------- */
+
+  /// Every section's periods for one day. 1 = Sunday … 7 = Saturday.
+  Future<DayTimetable> timetableDay(int dayOfWeek) async =>
+      DayTimetable.fromJson(await getObject('timetable/day/$dayOfWeek'));
+
+  Future<TeacherWeek> teacherWeek(int staffId) async =>
+      TeacherWeek.fromJson(await getObject('timetable/teacher/$staffId'));
+
+  /// Sets one cell. A null or blank subject clears it.
+  ///
+  /// The teacher is sent with the subject rather than chosen separately, so a
+  /// slot cannot end up disagreeing with who is assigned to teach it.
+  Future<void> saveTimetableSlot({
+    required String className,
+    required String sectionName,
+    required int dayOfWeek,
+    required int periodNo,
+    String? subject,
+    String? room,
+    int? teacherStaffId,
+  }) => put('timetable/slot', <String, dynamic>{
+    'className': className,
+    'sectionName': sectionName,
+    'dayOfWeek': dayOfWeek,
+    'periodNo': periodNo,
+    'subject': subject,
+    'room': room,
+    'teacherStaffId': teacherStaffId,
+  });
+
+  /// Suggests subjects for the day's empty periods without double-booking.
+  Future<AutoFillResult> autoFillDay(int dayOfWeek) async =>
+      AutoFillResult.fromJson(
+        ApiHttp.asObject(await postAny('timetable/day/$dayOfWeek/autofill',
+            const <String, dynamic>{})),
+      );
+
+  /// Clears the grid. A null day clears the whole week; periods and working
+  /// days survive either way.
+  Future<ResetResult> resetTimetable({int? dayOfWeek}) async =>
+      ResetResult.fromJson(
+        ApiHttp.asObject(await postAny('timetable/reset', <String, dynamic>{
+          'dayOfWeek': dayOfWeek,
+        })),
+      );
+
+  Future<void> setWorkingDays(List<int> days) =>
+      put('timetable/working-days', <String, dynamic>{'days': days});
+
+  Future<List<AdminPeriod>> periods() async =>
+      (await getList('timetable/periods')).map(AdminPeriod.fromJson).toList();
+
+  Future<void> createPeriod({
+    required String name,
+    required String startTime,
+    required int durationMinutes,
+    required bool isBreak,
+  }) => post('timetable/periods', <String, dynamic>{
+    'name': name,
+    'startTime': startTime,
+    'durationMinutes': durationMinutes,
+    'isBreak': isBreak,
+  });
+
+  Future<void> updatePeriod(
+    int id, {
+    required String name,
+    required String startTime,
+    required int durationMinutes,
+    required bool isBreak,
+  }) => put('timetable/periods/$id', <String, dynamic>{
+    'name': name,
+    'startTime': startTime,
+    'durationMinutes': durationMinutes,
+    'isBreak': isBreak,
+  });
+
+  Future<void> deletePeriod(int id) => delete('timetable/periods/$id');
+
+  /* ---------------- fee structure ---------------- */
+
+  Future<FeeStructureGrid> feeStructure() async =>
+      FeeStructureGrid.fromJson(await getObject('fee-structure'));
+
+  /// Saves amounts for whatever pairs are passed. Zero clears a price — the
+  /// class stops being billed for that head — so the screen sends zero rather
+  /// than omitting a cleared field.
+  Future<void> saveFeeStructure({
+    int? academicYearId,
+    required List<Map<String, dynamic>> cells,
+  }) => put('fee-structure', <String, dynamic>{
+    'academicYearId': academicYearId,
+    'cells': cells,
+  });
+
+  Future<List<FeeHead>> feeHeads() async =>
+      (await getList('fee-structure/heads')).map(FeeHead.fromJson).toList();
+
+  Future<void> createFeeHead({
+    required String name,
+    String? description,
+    required String frequency,
+    required String pricingMode,
+    required bool isRefundable,
+  }) => post('fee-structure/heads', <String, dynamic>{
+    'name': name,
+    'description': description,
+    'frequency': frequency,
+    'pricingMode': pricingMode,
+    'isRefundable': isRefundable,
+  });
+
+  Future<void> updateFeeHead(
+    int id, {
+    required String name,
+    String? description,
+    required String frequency,
+    required String pricingMode,
+    required bool isRefundable,
+  }) => put('fee-structure/heads/$id', <String, dynamic>{
+    'name': name,
+    'description': description,
+    'frequency': frequency,
+    'pricingMode': pricingMode,
+    'isRefundable': isRefundable,
+  });
+
+  Future<void> setFeeHeadActive(int id, bool isActive) =>
+      patch('fee-structure/heads/$id/active', <String, dynamic>{
+        'isActive': isActive,
+      });
+
+  /* ---------------- transport ---------------- */
+
+  Future<TransportGrid> transport() async =>
+      TransportGrid.fromJson(await getObject('transport'));
+
+  /// The whole band set at once. Bands are meaningless individually — moving
+  /// one ceiling changes which band a student falls in — so the API replaces
+  /// them together.
+  Future<void> saveTransportSlabs({
+    int? academicYearId,
+    required List<Map<String, dynamic>> slabs,
+  }) => put('transport/slabs', <String, dynamic>{
+    'academicYearId': academicYearId,
+    'slabs': slabs,
+  });
+
+  Future<void> saveTransportStudents(
+    List<Map<String, dynamic>> students,
+  ) => put('transport/students', <String, dynamic>{'students': students});
+
+  /* ---------------- academic years ---------------- */
+
+  Future<List<AcademicYear>> academicYears() async =>
+      (await getList('academic-years')).map(AcademicYear.fromJson).toList();
+
+  Future<void> createAcademicYear({
+    required String name,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) => post('academic-years', <String, dynamic>{
+    'name': name,
+    'startDate': startDate.toIso8601String(),
+    'endDate': endDate.toIso8601String(),
+  });
+
+  Future<void> updateAcademicYear(
+    int id, {
+    required String name,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) => put('academic-years/$id', <String, dynamic>{
+    'name': name,
+    'startDate': startDate.toIso8601String(),
+    'endDate': endDate.toIso8601String(),
+  });
+
+  /// Makes this the year new work is filed under, which clears the previous one.
+  Future<void> setCurrentAcademicYear(int id) =>
+      patch('academic-years/$id/current', const <String, dynamic>{});
+
+  Future<void> deleteAcademicYear(int id) => delete('academic-years/$id');
 
   /// The class master, with each class's sections. Backs every picker that
   /// needs a class and a section together.

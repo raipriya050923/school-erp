@@ -17,6 +17,13 @@ import 'package:school_management_mobile/features/notifications/notifications_sc
 import 'package:school_management_mobile/features/results/results_screen.dart';
 import 'package:school_management_mobile/features/settings/settings_screen.dart';
 import 'package:school_management_mobile/features/shell/app_shell.dart';
+import 'package:school_management_mobile/core/loadable.dart';
+import 'package:school_management_mobile/core/staff_stores.dart';
+import 'package:school_management_mobile/data/staff_models.dart';
+import 'package:school_management_mobile/features/staff/teacher_screens.dart';
+import 'package:school_management_mobile/features/staff/admin_screens.dart';
+import 'package:school_management_mobile/features/staff/admin_transport_screen.dart';
+import 'package:school_management_mobile/features/staff/teacher_roster_screen.dart';
 
 /// Renders every screen at 390x844 logical pixels (@2x) and writes a PNG to
 /// `screenshots/`. Skipped in the normal suite because it compares rendered
@@ -78,6 +85,177 @@ void main() {
   }
 
   // ------------------------------------------------------------ light theme
+
+  testWidgets('00 teacher dashboard', (WidgetTester t) async {
+    // Seeded rather than fetched: the point of the shot is the layout once the
+    // data has arrived, which a live login would only make harder to reproduce.
+    TeacherStore.instance.dashboard = Loadable<TeacherDashboard>.data(
+      TeacherDashboard(
+        profile: const TeacherProfile(
+          name: 'Sunita Gurung',
+          employeeCode: 'EMP-008',
+          subject: 'English',
+        ),
+        myClassesCount: 2,
+        studentsTaught: 64,
+        submissionsToGrade: 12,
+        openHomework: 2,
+        recentHomework: <TeacherHomework>[
+          TeacherHomework(
+            id: 1,
+            title: 'Essay on monsoon',
+            subject: 'English',
+            classLabel: 'Grade 6 - A',
+            dueDate: DateTime(2026, 11, 14),
+            submitted: 18,
+            total: 30,
+            status: 'open',
+          ),
+          TeacherHomework(
+            id: 2,
+            title: 'Poem recital notes',
+            subject: 'English',
+            classLabel: 'Grade 7 - B',
+            dueDate: DateTime(2026, 11, 2),
+            submitted: 29,
+            total: 29,
+            status: 'grading',
+          ),
+          TeacherHomework(
+            id: 3,
+            title: 'Grammar exercise 4',
+            subject: 'English',
+            classLabel: 'Grade 6 - A',
+            dueDate: DateTime(2026, 10, 28),
+            submitted: 30,
+            total: 30,
+            status: 'graded',
+          ),
+        ],
+      ),
+    );
+    addTearDown(TeacherStore.instance.reset);
+    await shoot(t, '00-teacher-dashboard', const TeacherHomeScreen());
+  });
+
+  testWidgets('00 admin dashboard', (WidgetTester t) async {
+    AdminStore.instance.dashboard = Loadable<AdminDashboard>.data(
+      AdminDashboard(
+        schoolName: 'Sunrise Public School',
+        academicYear: '2026-27',
+        totalStudents: 1249,
+        totalTeachers: 12,
+        teachersOnLeave: 1,
+        totalClasses: 5,
+        totalSections: 10,
+        feesBilled: 34341000,
+        feesCollected: 140000,
+        feesOverdue: 16015500,
+        feesDue: 34201000,
+        unpaidInvoices: 2716,
+        attendanceToday: null,
+        attendanceTrend: <AttendancePoint>[
+          for (int i = 0; i < 30; i++)
+            AttendancePoint(
+              date: DateTime(2026, 6, 1).add(Duration(days: i)),
+              // Four sharp dips, as the web chart shows.
+              percent: i % 7 == 3 ? 12 : (i % 5 == 0 ? 88 : 97),
+              present: 1200,
+              total: 1245,
+            ),
+        ],
+        recentAdmissions: <RecentAdmission>[
+          RecentAdmission(
+            name: 'Sunil Rai',
+            className: 'Grade 6',
+            sectionName: 'A',
+            admissionDate: DateTime(2026, 10, 25),
+          ),
+          RecentAdmission(
+            name: 'Ojaswi Bhattarai',
+            className: 'Grade 6',
+            sectionName: 'A',
+            admissionDate: DateTime(2025, 4, 8),
+          ),
+          RecentAdmission(
+            name: 'Sagar Basnet',
+            className: 'Grade 6',
+            sectionName: 'B',
+            admissionDate: DateTime(2025, 4, 8),
+          ),
+        ],
+        latestNotices: <SchoolNotice>[
+          SchoolNotice(
+            id: 1,
+            title: 'Parent-teacher meeting',
+            body: 'Saturday at 10am in the main hall.',
+            audience: 'parents',
+            publishDate: DateTime(2026, 10, 20),
+            createdBy: 11,
+          ),
+        ],
+      ),
+    );
+    addTearDown(AdminStore.instance.reset);
+    await shoot(t, '00-admin-dashboard', const AdminHomeScreen(), scrollBy: 300);
+    await shoot(t, '00-admin-dashboard-lower', const AdminHomeScreen(), scrollBy: 1150);
+  });
+
+  testWidgets('00 transport bands', (WidgetTester t) async {
+    // Three bands as a school would set them, plus the riders each one has
+    // priced, which is what makes a band more than an abstraction.
+    await shoot(
+      t,
+      '00-transport-bands',
+      TransportBandsScreen(
+        slabs: <TransportSlab>[
+          const TransportSlab(
+              id: 1, fromKm: 0, upToKm: 3, amount: 800, riders: 42),
+          const TransportSlab(
+              id: 2, fromKm: 3, upToKm: 6, amount: 1200, riders: 31),
+          const TransportSlab(
+              id: 3, fromKm: 6, upToKm: 10, amount: 1600, riders: 12),
+        ],
+      ),
+    );
+  });
+
+  testWidgets('00 transport student', (WidgetTester t) async {
+    // A rider already priced by a band: every field the web's row carries is
+    // on screen, with the band that produced the amount named underneath.
+    await shoot(
+      t,
+      '00-transport-student',
+      const Scaffold(
+        body: TransportStudentSheet(
+          student: TransportStudent(
+            studentId: 1,
+            name: 'Anisha Rai',
+            admissionNo: 'ADM-2079-201',
+            className: 'Grade 10',
+            sectionName: 'A',
+            usesTransport: true,
+            distanceKm: 4.5,
+            pickupPoint: 'Balkhu bridge',
+            amountOverride: null,
+            note: null,
+            amount: 1200,
+            status: 'priced',
+            matchedSlabKm: 6,
+          ),
+        ),
+      ),
+    );
+  });
+
+  testWidgets('00 teacher roster', (WidgetTester t) async {
+    await shoot(t, '00-teacher-roster',
+        const TeacherRosterScreen(
+          className: 'Grade 6',
+          sectionName: 'A',
+          subject: 'English',
+        ));
+  });
 
   testWidgets('01 login', (WidgetTester t) async {
     await shoot(t, '01-login', const LoginScreen());
@@ -267,6 +445,15 @@ ThemeData _screenshotTheme(bool dark) {
     ),
     chipTheme: theme.chipTheme.copyWith(
       labelStyle: withFamily(theme.chipTheme.labelStyle),
+    ),
+    // A ListTile's title and subtitle resolve through here, not through the
+    // button or chip themes — without this a SwitchListTile's label renders as
+    // the fallback boxes and looks like a missing string.
+    listTileTheme: theme.listTileTheme.copyWith(
+      titleTextStyle: withFamily(theme.listTileTheme.titleTextStyle ??
+          theme.textTheme.bodyLarge),
+      subtitleTextStyle: withFamily(theme.listTileTheme.subtitleTextStyle ??
+          theme.textTheme.bodyMedium),
     ),
     tabBarTheme: theme.tabBarTheme.copyWith(
       labelStyle: withFamily(theme.tabBarTheme.labelStyle),

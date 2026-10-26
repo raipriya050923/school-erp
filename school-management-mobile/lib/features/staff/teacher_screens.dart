@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/api_models.dart' show StudentTimetable, TimetableSlot;
 import '../../data/staff_models.dart';
+import 'teacher_roster_screen.dart';
 import 'staff_widgets.dart';
 
 const List<String> _dayNames = <String>[
@@ -44,43 +45,87 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
       store: TeacherStore.instance,
       builder: (BuildContext context, TeacherStore store) => StaffPage(
         title: 'Dashboard',
-        subtitle: store.dashboard.value?.profile.name,
+        subtitle: _profileLine(store.dashboard.value?.profile),
         onRefresh: () => store.loadDashboard(force: true),
         child: StaffSection<TeacherDashboard>(
           state: store.dashboard,
           onRetry: () => store.loadDashboard(force: true),
-          builder: (BuildContext context, TeacherDashboard d) => MetricGrid(
-            tiles: <MetricTile>[
-              MetricTile(
-                label: 'My classes',
-                value: '${d.myClassesCount}',
-                tint: 0,
-                icon: Icons.class_outlined,
+          builder: (BuildContext context, TeacherDashboard d) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              MetricGrid(
+                tiles: <MetricTile>[
+                  MetricTile(
+                    label: 'My classes',
+                    value: '${d.myClassesCount}',
+                    tint: 0,
+                    icon: Icons.class_outlined,
+                  ),
+                  MetricTile(
+                    label: 'Students taught',
+                    value: '${d.studentsTaught}',
+                    tint: 1,
+                    icon: Icons.groups_outlined,
+                  ),
+                  MetricTile(
+                    label: 'To grade',
+                    value: '${d.submissionsToGrade}',
+                    tint: 2,
+                    icon: Icons.rate_review_outlined,
+                  ),
+                  MetricTile(
+                    label: 'Open homework',
+                    value: '${d.openHomework}',
+                    tint: 3,
+                    icon: Icons.assignment_outlined,
+                  ),
+                ],
               ),
-              MetricTile(
-                label: 'Students taught',
-                value: '${d.studentsTaught}',
-                tint: 1,
-                icon: Icons.groups_outlined,
-              ),
-              MetricTile(
-                label: 'To grade',
-                value: '${d.submissionsToGrade}',
-                tint: 2,
-                icon: Icons.rate_review_outlined,
-              ),
-              MetricTile(
-                label: 'Open homework',
-                value: '${d.openHomework}',
-                tint: 3,
-                icon: Icons.assignment_outlined,
-              ),
+              const SizedBox(height: AppSpacing.xl),
+
+              // The counters above say how much is waiting. This says which
+              // assignments they are, which is what the web dashboard shows
+              // and what decides where a teacher starts.
+              const SectionHeader('Homework needing attention'),
+              if (d.recentHomework.isEmpty)
+                const EmptyState(
+                  icon: Icons.assignment_outlined,
+                  title: 'No homework yet',
+                  message: 'Assignments you set will be listed here.',
+                )
+              else
+                for (final TeacherHomework h in d.recentHomework)
+                  StaffRow(
+                    title: h.title,
+                    subtitle: _homeworkLine(h),
+                    // Handed in out of set — the same ratio the web table
+                    // shows, and the reason to open it.
+                    trailing: '${h.submitted}/${h.total}',
+                    status: h.status.isEmpty ? null : h.status,
+                  ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// `Grade 6 — A · Due 14 Nov`, skipping whichever parts the API did not send.
+String _homeworkLine(TeacherHomework h) => <String>[
+  if (h.classLabel != null && h.classLabel!.isNotEmpty) h.classLabel!,
+  if (h.subject != null && h.subject!.isNotEmpty) h.subject!,
+  if (h.dueDate != null) 'Due ${_formatDate(h.dueDate!)}',
+].join(' · ');
+
+/// `Science · EMP-008`. The web header carries both beside the greeting.
+String? _profileLine(TeacherProfile? p) {
+  if (p == null) return null;
+  return <String>[
+    p.name,
+    if (p.subject != null && p.subject!.isNotEmpty) p.subject!,
+    if (p.employeeCode != null && p.employeeCode!.isNotEmpty) p.employeeCode!,
+  ].join(' · ');
 }
 
 /* -------------------------------------------------------------- classes -- */
@@ -114,7 +159,8 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
         child: StaffSection<List<TeacherClass>>(
           state: store.classes,
           onRetry: () => store.loadClasses(force: true),
-          builder: (BuildContext context, List<TeacherClass> rows) => rows.isEmpty
+          builder: (BuildContext context, List<TeacherClass> rows) =>
+              rows.isEmpty
               ? const EmptyState(
                   icon: Icons.class_outlined,
                   title: 'No classes assigned',
@@ -132,6 +178,16 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
                         // Being class teacher is the distinction that decides
                         // what a teacher may do, so it is the badge.
                         status: c.isClassTeacher ? 'class teacher' : null,
+                        // "32 students" is a number; the roster is the people.
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (BuildContext _) => TeacherRosterScreen(
+                              className: c.className,
+                              sectionName: c.sectionName,
+                              subject: c.subject,
+                            ),
+                          ),
+                        ),
                       ),
                   ],
                 ),
@@ -273,7 +329,8 @@ class _TeacherLeaveScreenState extends State<TeacherLeaveScreen> {
   }
 
   Future<void> _apply() async {
-    final List<LeaveType> types = TeacherStore.instance.leaveTypes.value ?? <LeaveType>[];
+    final List<LeaveType> types =
+        TeacherStore.instance.leaveTypes.value ?? <LeaveType>[];
     if (types.isEmpty) return;
     final bool? applied = await showModalBottomSheet<bool>(
       context: context,
@@ -311,25 +368,27 @@ class _TeacherLeaveScreenState extends State<TeacherLeaveScreen> {
                   state: store.leave,
                   onRetry: () => store.loadLeave(force: true),
                   builder:
-                      (BuildContext context, List<LeaveApplication> rows) =>
-                          rows.isEmpty
-                          ? const EmptyState(
-                              icon: Icons.beach_access_outlined,
-                              title: 'No leave requests',
-                              message: 'Tap + to apply for leave.',
-                            )
-                          : Column(
-                              children: <Widget>[
-                                for (final LeaveApplication a in rows)
-                                  StaffRow(
-                                    title: a.leaveTypeName ?? 'Leave',
-                                    subtitle: a.reason,
-                                    trailing:
-                                        '${a.days.toStringAsFixed(a.days % 1 == 0 ? 0 : 1)} d',
-                                    status: a.status,
-                                  ),
-                              ],
-                            ),
+                      (
+                        BuildContext context,
+                        List<LeaveApplication> rows,
+                      ) => rows.isEmpty
+                      ? const EmptyState(
+                          icon: Icons.beach_access_outlined,
+                          title: 'No leave requests',
+                          message: 'Tap + to apply for leave.',
+                        )
+                      : Column(
+                          children: <Widget>[
+                            for (final LeaveApplication a in rows)
+                              StaffRow(
+                                title: a.leaveTypeName ?? 'Leave',
+                                subtitle: a.reason,
+                                trailing:
+                                    '${a.days.toStringAsFixed(a.days % 1 == 0 ? 0 : 1)} d',
+                                status: a.status,
+                              ),
+                          ],
+                        ),
                 ),
               ],
             ),
@@ -427,7 +486,10 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('Apply for leave', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'Apply for leave',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: AppSpacing.lg),
             DropdownButtonFormField<int>(
               initialValue: _typeId,
@@ -483,3 +545,20 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
     );
   }
 }
+
+const List<String> _months = <String>[
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _formatDate(DateTime d) => '${d.day} ${_months[d.month - 1]}';

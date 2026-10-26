@@ -39,6 +39,12 @@ dependencies:
   http: ^1.6.0
   shared_preferences: ^2.5.5
 
+  # Receipts as a file. `pdf` builds the document, `printing` hands it to the
+  # system sheet, which is where a phone's "save to Downloads", "send" and
+  # "print" all live — the same three things the web's print dialog offers.
+  pdf: ^3.11.1
+  printing: ^5.13.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -91,3 +97,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# image 4.11.0 calls ZLibDecoder.decodeLazy, which no published archive release
+# provides — the two resolve together by version range but do not compile.
+# 4.8.0 is the last image release that does not make that call. Nothing here
+# uses image directly; it arrives under pdf and printing.
+dependency_overrides:
+  image: 4.8.0

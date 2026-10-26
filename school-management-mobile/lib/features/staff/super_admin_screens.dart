@@ -651,6 +651,9 @@ class _SubscriptionMix extends StatelessWidget {
             child: SizedBox(
               height: 10,
               child: Row(
+                // Stretch, or each segment takes its own (zero) height and the
+                // bar is an invisible 10px gap above the legend.
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   if (stats.activeSubscriptions > 0)
                     Expanded(
